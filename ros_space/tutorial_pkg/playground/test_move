@@ -9,23 +9,24 @@ print("test_move :: START...")
 class ROSTalker:
     def __init__(self, rosNode):
         self._publisher = rosNode.create_publisher(Twist, '/multi/cmd_nav', 10)
-        self._timer = rosNode.create_timer(5.0, self.timer_callback)
+        self._timer = rosNode.create_timer(15.0, self.timer_callback)
 
     def timer_callback(self):
         velocity = Twist()
-        velocity.linear.x = 2
+        velocity.linear.x = 0.5
         self._publisher.publish(velocity)
-        time.sleep(1)
         # Move backward
-        velocity.linear.x = -2
+
+        velocity.linear.x = -1.0
         self._publisher.publish(velocity)
         time.sleep(1)
+        velocity.linear.x = 0.0
         print('arr')
         # Turn right
-        velocity.angular.z = -2
+        velocity.angular.z = -2.0
         self._publisher.publish(velocity)
         time.sleep(1)
-        velocity.angular.z = 2
+        velocity.angular.z = 2.0
         self._publisher.publish(velocity)
         time.sleep(1)       
         velocity.linear.x = 0.0
