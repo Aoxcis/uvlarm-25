@@ -1,7 +1,0 @@
-launch:
-    - node:
-        pkg: "tutorial_pkg"
-        exec: "talker"
-    - node:
-        pkg: "tutorial_pkg"
-        exec: "listener"
