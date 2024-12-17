@@ -16,7 +16,7 @@ class ROSTalker:
     def timer_callback(self):
         velocity = Twist()
         # Feed Twist velocity values
-        velocity.linear.x = 0.5
+        velocity.linear.x = -0.5
         # Publish 
         self._publisher.publish(velocity)
 
