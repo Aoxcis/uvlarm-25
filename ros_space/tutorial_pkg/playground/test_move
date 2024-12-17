@@ -13,19 +13,19 @@ class ROSTalker:
 
     def timer_callback(self):
         velocity = Twist()
-        velocity.linear.x = 0.4
+        velocity.linear.x = 2
         self._publisher.publish(velocity)
         time.sleep(1)
         # Move backward
-        velocity.linear.x = -0.4
+        velocity.linear.x = -2
         self._publisher.publish(velocity)
         time.sleep(1)
         print('arr')
         # Turn right
-        velocity.angular.z = -0.4
+        velocity.angular.z = -2
         self._publisher.publish(velocity)
         time.sleep(1)
-        velocity.angular.z = 0.4
+        velocity.angular.z = 2
         self._publisher.publish(velocity)
         time.sleep(1)       
         velocity.linear.x = 0.0
