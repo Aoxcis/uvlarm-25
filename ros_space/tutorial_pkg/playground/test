@@ -4,18 +4,19 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from std_msgs.msg import String
 import time
-print("test_move :: START...")
+
 
 class ROSTalker:
     def __init__(self, rosNode):
         self._publisher = rosNode.create_publisher(Twist, '/multi/cmd_nav', 10)
-        self._timer = rosNode.create_timer(5.0, self.timer_callback)
+        self._timer = rosNode.create_timer(1.0, self.timer_callback)
 
     def timer_callback(self):
         velocity = Twist()
-        velocity.linear.x = 0.4
+        velocity.linear.x = 0.1
         self._publisher.publish(velocity)
         time.sleep(1)
+        print('avant')
         # Move backward
         velocity.linear.x = -0.4
         self._publisher.publish(velocity)
@@ -23,14 +24,8 @@ class ROSTalker:
         print('arr')
         # Turn right
         velocity.angular.z = -0.4
-        self._publisher.publish(velocity)
-        time.sleep(1)
-        velocity.angular.z = 0.4
-        self._publisher.publish(velocity)
-        time.sleep(1)       
         velocity.linear.x = 0.0
         velocity.angular.z = 0.0
-        self._publisher.publish(velocity)
 
 def infiniteTalk():
     # Initialize ROS node with ROS client
