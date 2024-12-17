@@ -6,7 +6,6 @@ from std_msgs.msg import String
 
 print("test_move :: START...")
 
-
 class ROSTalker:
     def __init__(self, rosNode):
         self._publisher = rosNode.create_publisher(Twist, '/multi/cmd_nav', 10)
@@ -15,15 +14,6 @@ class ROSTalker:
 
     def timer_callback(self):
         velocity = Twist()
-        velocity.linear.x = 0.0
-        velocity.linear.y = 0.0
-        velocity.linear.z = 0.0
-
-        velocity.angular.z = 0.0
-        velocity.angular.y = 0.0
-        velocity.angular.x = 0.0
-
-
         if self._i == 0:
             # Move forward
             velocity.linear.x = 0.4
