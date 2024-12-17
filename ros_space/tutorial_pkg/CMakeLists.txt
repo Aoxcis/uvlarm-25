@@ -26,3 +26,4 @@ endif()
 ament_package()
 # Python scripts
 install( PROGRAMS playground/test_move DESTINATION lib/${PROJECT_NAME} )
+install( PROGRAMS playground/scan_echo DESTINATION lib/${PROJECT_NAME} )
