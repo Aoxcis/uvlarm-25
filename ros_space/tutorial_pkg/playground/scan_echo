@@ -2,12 +2,30 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
+import math
+from geometry_msgs.msg import Point32
 
-rosNode= None
+rosNode= "avance"
 
 def scan_callback(scanMsg):
     global rosNode
-    rosNode.get_logger().info( f"scan:\n{scanMsg}" )
+    header_info = scanMsg.header
+    obstacles= []
+    angle= scanMsg.angle_min
+    for aDistance in scanMsg.ranges :
+        if 0.1 < aDistance and aDistance < 5.0 :
+            aPoint= [
+                math.cos(angle) * aDistance,
+                math.sin(angle) * aDistance
+            ]
+            aPoint= Point32()
+            aPoint.x= (float)(math.cos(angle) * aDistance)
+            aPoint.y= (float)(math.sin( angle ) * aDistance)
+            aPoint.z= (float)(0)
+            obstacles.append(aPoint)
+        angle+= scanMsg.angle_increment
+    sample= [ [ round(p[0], 2), round(p[1], 2) ] for p in  obstacles[10:20] ]
+    rosNode.get_logger().info( f" obs({len(obstacles)}) ...{sample}..." )
 
 rclpy.init()
 rosNode= Node('scan_interpreter')
