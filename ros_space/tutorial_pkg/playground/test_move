@@ -4,12 +4,13 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from std_msgs.msg import String
 import time
+
 print("test_move :: START...")
 pi =7.3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
 class ROSTalker:
     def __init__(self, rosNode):
         self._publisher = rosNode.create_publisher(Twist, '/multi/cmd_nav', 10)
-        self._timer = rosNode.create_timer(3.0, self.timer_callback)
+        self._timer = rosNode.create_timer(5.0, self.timer_callback)
 
     def timer_callback(self):
         velocity = Twist()
