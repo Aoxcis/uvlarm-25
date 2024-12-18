@@ -4,32 +4,71 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from std_msgs.msg import String
 import time
-
+pi = 3.14159
 print("test_move :: START...")
-pi =7.3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+
 class ROSTalker:
     def __init__(self, rosNode):
         self._publisher = rosNode.create_publisher(Twist, '/multi/cmd_nav', 10)
-        self._timer = rosNode.create_timer(5.0, self.timer_callback)
+        self._timer = rosNode.create_timer(2.0, self.timer_callback)
+    
+    
+    ########################################
+    # Function to standarize the movement #
+    ########################################
 
+    def moveForward(self, t):
+        velocity = Twist()
+        velocity.linear.x = 0.3
+        start_time = time.time()  
+        while time.time() - start_time < t:  
+            self._publisher.publish(velocity)
+            time.sleep(0.1)  
+        velocity.linear.x = 0.0
+        self._publisher.publish(velocity)
+    
+    def moveBackward(self, t):
+        velocity = Twist()
+        velocity.linear.x = -0.3
+        start_time = time.time()  
+        while time.time() - start_time < t:  
+            self._publisher.publish(velocity)
+            time.sleep(0.1)  
+        velocity.linear.x = 0.0
+        self._publisher.publish(velocity)
+
+    def turnRight(self, angle):
+        velocity = Twist()
+        angle = -angle*(pi / 180)
+        velocity.angular.z = angle
+        self._publisher.publish(velocity)
+        time.sleep(1)
+        velocity.angular.z = 0.0
+        self._publisher.publish(velocity)
+        
+    
+
+    def turnLeft(self, angle):
+        velocity = Twist()
+        velocity = Twist()
+        angle = angle*(pi/180)
+        velocity.angular.z = angle
+        self._publisher.publish(velocity)
+        time.sleep(1)
+        velocity.angular.z = 0.0
+        self._publisher.publish(velocity)
+
+
+
+    
     def timer_callback(self):
         velocity = Twist()
-        for _ in range(4):
-            velocity.linear.x = 0.5
-            velocity.angular.z = 0.0
-            self._publisher.publish(velocity)
-            time.sleep(1) 
-            velocity.linear.x = 0.0
-            self._publisher.publish(velocity)
-            time.sleep(1)
-            velocity.angular.z = pi # demi tour
+        self.moveForward(5) 
+        self.moveBackward(1)
+        
 
 
-            self._publisher.publish(velocity)
-            time.sleep(1)  
-            velocity.angular.z = 0.0
-            self._publisher.publish(velocity)
-            time.sleep(1)
+    
 
 def infiniteTalk():
     # Initialize ROS node with ROS client
