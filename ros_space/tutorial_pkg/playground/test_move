@@ -3,15 +3,24 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from std_msgs.msg import String
+from sensor_msgs.msg import PointCloud
 import time
 pi = 3.14159
 print("test_move :: START...")
 
 class ROSTalker:
     def __init__(self, rosNode):
+        self._logger = rosNode.get_logger()
         self._publisher = rosNode.create_publisher(Twist, '/multi/cmd_nav', 10)
         self._timer = rosNode.create_timer(2.0, self.timer_callback)
-    
+        self.point_cloud_data = []
+
+        def point_cloud_callback(msg):
+            self.point_cloud_data = [(point.x, point.y, point.z) for point in msg.points]
+            for point in self.point_cloud_data:
+                self._logger.info(f"Point: x={point[0]}, y={point[1]}, z={point[2]}")
+
+        rosNode.create_subscription(PointCloud, 'point_cloud', point_cloud_callback, 10)
     
     ########################################
     # Function to standarize the movement #
@@ -63,8 +72,7 @@ class ROSTalker:
     
     def timer_callback(self):
         velocity = Twist()
-        self.moveForward(5) 
-        self.moveBackward(1)
+        
         
 
 
