@@ -46,58 +46,86 @@ class StraightCtrl:
             self.scan_callback, 10
         )
 
+        # Initialize bumper callback:
+        self._subToBumper = self.rosNode.create_subscription(
+            String, '/events/bumper',
+            self.bumper_callback, 10
+        )
+
         # Initialize control callback:
         self._timForCtrl = self.rosNode.create_timer(
             0.05, self.control_callback
         )
 
-    def scan_callback(self, scanMsg):
-        self._logger.info('> get scan')
-        
-        # Define left and right ranges
-        left_ranges = []
-        right_ranges = []
 
+    def bumper_callback(self, msg):
+        # Log the bumper event
+        self._logger.info(f'Bumper event: {msg.state}')
+
+        if msg.state == 'pressed':
+            # Stop the robot
+            twist = Twist()
+            twist.linear.x = 0.0
+            twist.angular.z = 0.0
+            self._pubVelocity.publish(twist)
+
+    def scan_callback(self, scanMsg):
         # Get angle and range info
         angle_min = scanMsg.angle_min
         angle_max = scanMsg.angle_max
+        angle_increment = scanMsg.angle_increment
         angle_middle = (angle_min + angle_max) / 2
+        
+        # Reset the obstacle flags at the start of each scan
+        self.obstacle_left = False
+        self.obstacle_right = False
 
-        angle_min_2 = angle_min + (angle_middle /2)
-        angle_max_2 = angle_max - (angle_middle /2)
+        # Iterate over the ranges and classify them based on angle
+        for i, dist in enumerate(scanMsg.ranges):
+            angle = angle_min + i * angle_increment
 
-        # Log angle and range between angle_min and angle_max_2
-        for i, range in enumerate(scanMsg.ranges):
-            angle = angle_min + i * scanMsg.angle_increment
-            if angle_min <= angle <= angle_max:
-                self._logger.info(f'Angle: {angle}, Range: {range}')
+            # Ignore invalid ranges (e.g., 0.0 or NaN)
+            if dist <= 0.0 or dist == float('inf'):
+                continue
+
+            # Check if the obstacle is within 0.1 meters (10 cm) and on the left or right
+            if -math.pi/2 <= angle <= -math.pi/4:  # Left side
+                if 0.1 < dist < 0.3:
+                    self.obstacle_right = True
+            elif math.pi/4 <= angle <= math.pi/2:  # Right side
+                if 0.1 < dist < 0.3:
+                    self.obstacle_left = True
+
+        # Log obstacle detection
+        if self.obstacle_left:
+            self._logger.info('Obstacle detected on the left!')
+        if self.obstacle_right:
+            self._logger.info('Obstacle detected on the right!')
 
     def control_callback(self):
-        self._logger.info('< define control')
         # Create a Twist message
         twist = Twist()
     
         # Check for obstacles and set velocities accordingly
         if not self.obstacle_left and not self.obstacle_right:
             # Move forward if no obstacles on either side
-            twist.linear.x = 0.1
+            twist.linear.x = 0.3
             twist.angular.z = 0.0
         elif self.obstacle_left and self.obstacle_right:
             # Move forward if no obstacles on either side
-            twist.linear.x = 0.1
-            twist.angular.z = 0.0
+            twist.linear.x = 0.0
+            twist.angular.z = 1.0
         elif self.obstacle_left:
             # Turn right if there's an obstacle on the left
-            twist.linear.x = 0.1
-            twist.angular.z = -0.2
-            self._logger.info('obstacle left')
+            twist.linear.x = 0.0
+            twist.angular.z = -1.0
         elif self.obstacle_right:
             # Turn left if there's an obstacle on the right
-            twist.linear.x = 0.1
-            twist.angular.z = 0.2
-            self._logger.info('obstacle right')
+            twist.linear.x = 0.0
+            twist.angular.z = 1.0
         else:
             self._logger.info('error')
+
         # Publish the velocity command
         self._pubVelocity.publish(twist)
 
