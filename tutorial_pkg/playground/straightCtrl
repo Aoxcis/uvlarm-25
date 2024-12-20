@@ -1,0 +1,52 @@
+#!/usr/bin/python3
+import rclpy
+from sensor_msgs.msg import Twist, LaserScan
+
+# Ros Node process:
+def main():
+    # Initialize ROS and a ROS node
+    rclpy.init(args=args)
+    node= rclpy.Node( 'basic_move' )
+
+    # Initialize our control:
+    control= StraightCtrl()
+    control.initializeRosNode( node )
+
+    # infinite Loop:
+    rclpy.spin( node )
+
+    # clean end
+    node.destroy_node()
+    rclpy.shutdown()
+
+# Ros Node Class:
+class StraightCtrl :
+    def initializeRosNode(self, rosNode ):
+        # Get logger from the node:
+        self._logger= rosNode.get_logger()
+
+        # Initialize publisher:
+        self._pubVelocity= rosNode.create_publisher(
+            Twist, '/multi/cmd_nav', 10
+        )
+
+        # Initialize scan callback:
+        self._subToScan= rosNode.create_subscription(
+            LaserScan, '/scan/',
+            self.scan_callback, 10
+        )
+
+        # Initialize control callback:
+        self._timForCtrl= rosNode.create_timer(
+            0.05, self.control_callback
+        )
+
+    def scan_callback(self, scanMsg ):
+        self._logger.info( '> get scan' )
+
+    def control_callback(self, rosNode ):
+        self._logger.info( '< define control' )
+
+# Go:
+if __name__ == '__main__' :
+    main()
