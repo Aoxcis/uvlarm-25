@@ -61,46 +61,16 @@ class StraightCtrl:
         # Get angle and range info
         angle_min = scanMsg.angle_min
         angle_max = scanMsg.angle_max
-        angle_increment = scanMsg.angle_increment
-        num_ranges = len(scanMsg.ranges)
+        angle_middle = (angle_min + angle_max) / 2
 
-        # Set obstacle detection threshold (10 cm)
-        obstacle_threshold = 0.1  # 10 cm
-        
-        # The angle_middle is calculated as the midpoint of the scan range.
-        angle_middle = (angle_min + angle_max)/2  # Zero angle is considered middle (adjust as needed)
+        angle_min_2 = angle_min + (angle_middle /2)
+        angle_max_2 = angle_max - (angle_middle /2)
 
-        # Separate scan data into left and right sectors based on angle
+        # Log angle and range between angle_min and angle_max_2
         for i, range in enumerate(scanMsg.ranges):
-            angle = angle_min + i * angle_increment
-
-            # Ignore invalid ranges
-            if range <= 0.0 or range == float('inf') or range == float('nan'):
-                continue
-
-            # Log the angle and range to help diagnose the issue
-            #self._logger.info(f"Angle: {angle:.2f}, Range: {range:.2f}")
-
-            # Left sector: angles from angle_min to 0 (or middle if positive angles)
-            if angle <= angle_middle:
-                left_ranges.append(range)
-            # Right sector: angles from 0 to angle_max
-            else:
-                right_ranges.append(range)
-
-        # Check for obstacles in the left sector
-        if left_ranges and min(left_ranges) < obstacle_threshold:
-            self.obstacle_left = True
-            self._logger.info('Obstacle detected on the left!')
-        else:
-            self.obstacle_left = False
-
-        # Check for obstacles in the right sector
-        if right_ranges and min(right_ranges) < obstacle_threshold:
-            self.obstacle_right = True
-            self._logger.info('Obstacle detected on the right!')
-        else:
-            self.obstacle_right = False
+            angle = angle_min + i * scanMsg.angle_increment
+            if angle_min <= angle <= angle_max:
+                self._logger.info(f'Angle: {angle}, Range: {range}')
 
     def control_callback(self):
         self._logger.info('< define control')
@@ -120,11 +90,14 @@ class StraightCtrl:
             # Turn right if there's an obstacle on the left
             twist.linear.x = 0.1
             twist.angular.z = -0.2
+            self._logger.info('obstacle left')
         elif self.obstacle_right:
             # Turn left if there's an obstacle on the right
             twist.linear.x = 0.1
             twist.angular.z = 0.2
-
+            self._logger.info('obstacle right')
+        else:
+            self._logger.info('error')
         # Publish the velocity command
         self._pubVelocity.publish(twist)
 
