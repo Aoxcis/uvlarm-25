@@ -67,13 +67,20 @@ class ROSTalker:
         velocity.angular.z = 0.0
         self._publisher.publish(velocity)
 
+    def mouvement_normal(self):
+        while self.point_cloud_data == []:
+            self.moveForward(1)
+        if len(self.point_cloud_data)>0:
+            self.moveBackward(1)
+            self.turnRight(90)
 
 
     
     def timer_callback(self):
         velocity = Twist()
+        self.mouvement_normal()
         
-        
+    
 
 
     

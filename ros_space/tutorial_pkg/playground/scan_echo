@@ -14,7 +14,7 @@ def scan_callback(scanMsg):
     obstacles = []
     angle = scanMsg.angle_min
     for aDistance in scanMsg.ranges:
-        if 0.5 < aDistance < 5.0:
+        if 0.01 < aDistance < 0.3:
             aPoint = Point32()
             aPoint.x = float(math.cos(angle) * aDistance)
             aPoint.y = float(math.sin(angle) * aDistance)
