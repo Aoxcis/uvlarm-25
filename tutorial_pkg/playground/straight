@@ -5,6 +5,7 @@ from rclpy.node import Node
 from std_msgs.msg import String
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
+from kobuki_ros_interfaces.msg import BumperEvent
 import math
 
 # Ros Node process:
@@ -29,11 +30,18 @@ class StraightCtrl:
         self.rosNode = rosNode  # Store the rosNode instance
         self.obstacle_left = False
         self.obstacle_right = False
+        self.bumped = False
         self.initializeRosNode()
 
     def initializeRosNode(self):
         # Get logger from the node:
         self._logger = self.rosNode.get_logger()
+
+        # Initialize bumper callback:
+        self._subToBumper = self.rosNode.create_subscription(
+            BumperEvent, '/events/bumper',  # Correct topic and message type
+            self.bumper_callback, 10
+        )
 
         # Initialize publisher:
         self._pubVelocity = self.rosNode.create_publisher(
@@ -46,11 +54,7 @@ class StraightCtrl:
             self.scan_callback, 10
         )
 
-        # Initialize bumper callback:
-        self._subToBumper = self.rosNode.create_subscription(
-            String, '/events/bumper',
-            self.bumper_callback, 10
-        )
+        
 
         # Initialize control callback:
         self._timForCtrl = self.rosNode.create_timer(
@@ -59,15 +63,15 @@ class StraightCtrl:
 
 
     def bumper_callback(self, msg):
-        # Log the bumper event
-        self._logger.info(f'Bumper event: {msg.state}')
+        self._logger.info(f'Bumper event received: {msg.state}')
 
         if msg.state == 'pressed':
-            # Stop the robot
-            twist = Twist()
-            twist.linear.x = 0.0
-            twist.angular.z = 0.0
-            self._pubVelocity.publish(twist)
+            self.bumped = True
+            self._logger.info('Bumper pressed, stopping the robot.')
+        elif msg.state == 'released':
+            self.bumped = False
+            self._logger.info('Bumper released, resuming movement.')
+
 
     def scan_callback(self, scanMsg):
         # Get angle and range info
@@ -105,26 +109,31 @@ class StraightCtrl:
     def control_callback(self):
         # Create a Twist message
         twist = Twist()
-    
-        # Check for obstacles and set velocities accordingly
-        if not self.obstacle_left and not self.obstacle_right:
-            # Move forward if no obstacles on either side
-            twist.linear.x = 0.3
+
+        if self.bumped:
+            twist.linear.x = 0.0
             twist.angular.z = 0.0
-        elif self.obstacle_left and self.obstacle_right:
-            # Move forward if no obstacles on either side
-            twist.linear.x = 0.0
-            twist.angular.z = 1.0
-        elif self.obstacle_left:
-            # Turn right if there's an obstacle on the left
-            twist.linear.x = 0.0
-            twist.angular.z = -1.0
-        elif self.obstacle_right:
-            # Turn left if there's an obstacle on the right
-            twist.linear.x = 0.0
-            twist.angular.z = 1.0
+            self._logger.info('Robot is stopped due to bumper press.')
         else:
-            self._logger.info('error')
+            # Check for obstacles and set velocities accordingly
+            if not self.obstacle_left and not self.obstacle_right:
+                # Move forward if no obstacles on either side
+                twist.linear.x = 0.3
+                twist.angular.z = 0.0
+            elif self.obstacle_left and self.obstacle_right:
+                # Move forward if no obstacles on either side
+                twist.linear.x = 0.0
+                twist.angular.z = 1.0
+            elif self.obstacle_left:
+                # Turn right if there's an obstacle on the left
+                twist.linear.x = 0.0
+                twist.angular.z = -1.0
+            elif self.obstacle_right:
+                # Turn left if there's an obstacle on the right
+                twist.linear.x = 0.0
+                twist.angular.z = 1.0
+            else:
+                self._logger.info('error')
 
         # Publish the velocity command
         self._pubVelocity.publish(twist)
