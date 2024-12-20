@@ -14,7 +14,7 @@ def scan_callback(scanMsg):
     obstacles = []
     angle = scanMsg.angle_min
     for aDistance in scanMsg.ranges:
-        if 0.1 < aDistance < 5.0:
+        if 0.01 < aDistance < 0.3:
             aPoint = Point32()
             aPoint.x = float(math.cos(angle) * aDistance)
             aPoint.y = float(math.sin(angle) * aDistance)
@@ -26,8 +26,8 @@ def scan_callback(scanMsg):
     point_cloud.header = header_info
     point_cloud.points = obstacles
 
-    rosNode.get_logger().info(f"Header: {header_info}, Number of ranges: {len(scanMsg.ranges)}")
-    rosNode.get_logger().info(f" obs({len(obstacles)}) ...{obstacles[10:20]}...")
+    #rosNode.get_logger().info(f"Header: {header_info}, Number of ranges: {len(scanMsg.ranges)}")
+    #rosNode.get_logger().info(f" obs({len(obstacles)}) ...{obstacles[10:20]}...")
 
     rosNode.publisher.publish(point_cloud)
 
