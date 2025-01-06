@@ -1,36 +1,10 @@
 #!/usr/bin/env python3
-
-###############################################
-##              Simple Request               ##
-###############################################
-
-import pyrealsense2 as rs
-
-# Configure depth and color streams
-pipeline = rs.pipeline()
-config = rs.config()
-
-# Get device product line for setting a supporting resolution
-pipeline_wrapper = rs.pipeline_wrapper(pipeline)
-pipeline_profile = config.resolve(pipeline_wrapper)
-device = pipeline_profile.get_device()
-device_product_line = str(device.get_info(rs.camera_info.product_line))
-
-print( f"Connect: {device_product_line}" )
-for s in device.sensors:
-    print( "Name:" + s.get_info(rs.camera_info.name) )
-
-    # End of test code this code for checking camera is connected or not! After succesfully running this code use the below code to define camera parameters etc.
-    # Dont forget to un-comment below code
-
-
-    #!/usr/bin/env python3
 ## Doc: https://dev.intelrealsense.com/docs/python2
 
 ###############################################
 ##      Open CV and Numpy integration        ##
 ###############################################
-"""
+
 import pyrealsense2 as rs
 import signal, time, numpy as np
 import sys, cv2, rclpy
@@ -118,4 +92,3 @@ while isOk:
 # Stop streaming
 print("\nEnding...")
 pipeline.stop()
-"""
