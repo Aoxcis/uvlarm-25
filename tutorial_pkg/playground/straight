@@ -5,7 +5,7 @@ from rclpy.node import Node
 from std_msgs.msg import String
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
-from kobuki_ros_interfaces.msg import BumperEvent
+from kobuki_ros_interfaces.msg import BumperEvent  # type: ignore
 import math
 
 # Ros Node process:
@@ -39,7 +39,7 @@ class StraightCtrl:
 
         # Initialize bumper callback:
         self._subToBumper = self.rosNode.create_subscription(
-            BumperEvent, '/events/bumper',  # Correct topic and message type
+            BumperEvent, '/events/bumper',
             self.bumper_callback, 10
         )
 
@@ -65,12 +65,10 @@ class StraightCtrl:
     def bumper_callback(self, msg):
         self._logger.info(f'Bumper event received: {msg.state}')
 
-        if msg.state == 'pressed':
+        if msg.state == 1:
             self.bumped = True
             self._logger.info('Bumper pressed, stopping the robot.')
-        elif msg.state == 'released':
-            self.bumped = False
-            self._logger.info('Bumper released, resuming movement.')
+            
 
 
     def scan_callback(self, scanMsg):
