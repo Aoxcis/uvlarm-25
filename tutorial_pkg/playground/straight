@@ -5,6 +5,7 @@ from rclpy.node import Node
 from std_msgs.msg import String
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
+from kobuki_ros_interfaces.msg import BumperEvent  # type: ignore
 import math
 
 # ROS Node process:
@@ -29,13 +30,18 @@ class StraightCtrl:
         self.rosNode = rosNode  # Store the rosNode instance
         self.obstacle_left = False
         self.obstacle_right = False
-        self.obstacle_ahead = False  # New flag for obstacles ahead
-        self.initial_scan_done = False  # Flag for first scan state
+        self.bumped = False
         self.initializeRosNode()
 
     def initializeRosNode(self):
         # Get logger from the node:
         self._logger = self.rosNode.get_logger()
+
+        # Initialize bumper callback:
+        self._subToBumper = self.rosNode.create_subscription(
+            BumperEvent, '/events/bumper',
+            self.bumper_callback, 10
+        )
 
         # Initialize publisher:
         self._pubVelocity = self.rosNode.create_publisher(
@@ -48,85 +54,96 @@ class StraightCtrl:
             self.scan_callback, 10
         )
 
+        
+
         # Initialize control callback:
         self._timForCtrl = self.rosNode.create_timer(
             0.1, self.control_callback  # Increased time for smoother updates
         )
 
+
+    def bumper_callback(self, msg):
+        self._logger.info(f'Bumper event received: {msg.state}')
+
+        if msg.state == 1:
+            self.bumped = True
+            self._logger.info('Bumper pressed, stopping the robot.')
+            
+
+
+
+    def bumper_callback(self, msg):
+        self._logger.info(f'Bumper event received: {msg.state}')
+
+        if msg.state == 1:
+            self.bumped = True
+            self._logger.info('Bumper pressed, stopping the robot.')
+            
+
+
     def scan_callback(self, scanMsg):
-        self._logger.info('> get scan')
-
-        # Skip scan handling until the first full scan is done
-        if not self.initial_scan_done:
-            self._logger.info('First scan completed, starting obstacle checks.')
-            self.initial_scan_done = True  # Mark that the first scan is done
-
-        # Define left, right, and ahead ranges
-        left_ranges = []
-        right_ranges = []
-        ahead_ranges = []
-
         # Get angle and range info
         angle_min = scanMsg.angle_min
         angle_max = scanMsg.angle_max
+        angle_increment = scanMsg.angle_increment
         angle_middle = (angle_min + angle_max) / 2
+        
+        # Reset the obstacle flags at the start of each scan
+        self.obstacle_left = False
+        self.obstacle_right = False
 
-        # Define angle ranges for left, right, and ahead
-        left_angle_range = (angle_min, angle_middle - 0.2)  # Left side angles
-        right_angle_range = (angle_middle + 0.2, angle_max)  # Right side angles
-        ahead_angle_range = (angle_min - 0.1, angle_max + 0.1)  # Ahead angles (slightly wider for robustness)
+        # Iterate over the ranges and classify them based on angle
+        for i, dist in enumerate(scanMsg.ranges):
+            angle = angle_min + i * angle_increment
 
-        # Loop through the ranges to categorize left, right, and ahead ranges
-        for i, range in enumerate(scanMsg.ranges):
-            angle = angle_min + i * scanMsg.angle_increment
-            if left_angle_range[0] <= angle <= left_angle_range[1]:
-                left_ranges.append(range)
-            elif right_angle_range[0] <= angle <= right_angle_range[1]:
-                right_ranges.append(range)
-            if ahead_angle_range[0] <= angle <= ahead_angle_range[1]:
-                ahead_ranges.append(range)
+            # Ignore invalid ranges (e.g., 0.0 or NaN)
+            if dist <= 0.0 or dist == float('inf'):
+                continue
 
-        # Define a threshold for detecting an obstacle
-        obstacle_threshold = 1.0  # Set the distance threshold for obstacles (in meters)
+            # Check if the obstacle is within 0.1 meters (10 cm) and on the left or right
+            if -math.pi/2 <= angle <= -math.pi/4:  # Left side
+                if 0.1 < dist < 0.3:
+                    self.obstacle_right = True
+            elif math.pi/4 <= angle <= math.pi/2:  # Right side
+                if 0.1 < dist < 0.3:
+                    self.obstacle_left = True
 
-        # Check if there are obstacles within the defined left, right, and ahead ranges
-        self.obstacle_left = any(r < obstacle_threshold for r in left_ranges)
-        self.obstacle_right = any(r < obstacle_threshold for r in right_ranges)
-        self.obstacle_ahead = any(r < obstacle_threshold for r in ahead_ranges)
-
-        # Log the obstacle status
-        self._logger.info(f"Obstacle Left: {self.obstacle_left}, Obstacle Right: {self.obstacle_right}, Obstacle Ahead: {self.obstacle_ahead}")
+        # Log obstacle detection
+        if self.obstacle_left:
+            self._logger.info('Obstacle detected on the left!')
+        if self.obstacle_right:
+            self._logger.info('Obstacle detected on the right!')
 
     def control_callback(self):
-        self._logger.info('< define control')
-        # Create a Twist message for movement
+        # Create a Twist message
         twist = Twist()
 
-        # If no obstacles ahead, move forward
-        if not self.obstacle_ahead:
-            twist.linear.x = 0.3  # Move forward at moderate speed
-            twist.angular.z = 0.0  # No rotation
-            self._logger.info('No obstacles ahead, moving forward.')
+        if self.bumped:
+            twist.linear.x = 0.0
+            twist.angular.z = 0.0
+            self._logger.info('Robot is stopped due to bumper press.')
+        else:
+            # Check for obstacles and set velocities accordingly
+            if not self.obstacle_left and not self.obstacle_right:
+                # Move forward if no obstacles on either side
+                twist.linear.x = 0.3
+                twist.angular.z = 0.0
+            elif self.obstacle_left and self.obstacle_right:
+                # Move forward if no obstacles on either side
+                twist.linear.x = 0.0
+                twist.angular.z = 1.0
+            elif self.obstacle_left:
+                # Turn right if there's an obstacle on the left
+                twist.linear.x = 0.0
+                twist.angular.z = -1.0
+            elif self.obstacle_right:
+                # Turn left if there's an obstacle on the right
+                twist.linear.x = 0.0
+                twist.angular.z = 1.0
+            else:
+                self._logger.info('error')
 
-        # If obstacle detected ahead, check left and right
-        elif self.obstacle_ahead:
-            # Stop moving forward
-            twist.linear.x = 0.0  
-            twist.angular.z = 0.0  # Stop turning as we will decide direction
-
-            # If there is no obstacle on the left, turn left and move forward
-            if not self.obstacle_left:
-                twist.angular.z = 0.5  # Turn left
-                twist.linear.x = 0.3   # Move forward
-                self._logger.info('Obstacle ahead, turning left.')
-            
-            # If there is no obstacle on the right, turn right and move forward
-            elif not self.obstacle_right:
-                twist.angular.z = -0.5  # Turn right
-                twist.linear.x = 0.3    # Move forward
-                self._logger.info('Obstacle ahead, turning right.')
-
-        # Publish the velocity command to move
+        # Publish the velocity command
         self._pubVelocity.publish(twist)
 
 # Go:

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+<<<<<<< HEAD
 
 ###############################################
 ##              Simple Request               ##
@@ -25,14 +26,20 @@ for s in device.sensors:
 
 
     #!/usr/bin/env python3
+=======
+>>>>>>> b73674de1aa7a5edd552bc004ad0ba040eb98281
 ## Doc: https://dev.intelrealsense.com/docs/python2
 
 ###############################################
 ##      Open CV and Numpy integration        ##
 ###############################################
+<<<<<<< HEAD
 # Dont forget to comment these codes!
 """ #COMMENT END
 """ #COMMENT START FOR SECOND CODE
+=======
+
+>>>>>>> b73674de1aa7a5edd552bc004ad0ba040eb98281
 import pyrealsense2 as rs
 import signal, time, numpy as np
 import sys, cv2, rclpy
@@ -120,6 +127,7 @@ while isOk:
 # Stop streaming
 print("\nEnding...")
 pipeline.stop()
+<<<<<<< HEAD
 """ #COMMENT END
 
 import rclpy
@@ -210,3 +218,5 @@ def process_img(args=None):
 
 if __name__ == '__main__':
     process_img()
+=======
+>>>>>>> b73674de1aa7a5edd552bc004ad0ba040eb98281
