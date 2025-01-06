@@ -7,28 +7,30 @@ from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
 import math
 
-# Ros Node process:
+# ROS Node process:
 def main():
     # Initialize ROS and a ROS node
     rclpy.init(args=sys.argv)
     node = Node('basic_move')
 
-    # Initialize our control:
+    # Initialize control class
     control = StraightCtrl(node)  # Pass the node to the constructor
 
-    # infinite Loop:
+    # Infinite loop for ROS to keep running
     rclpy.spin(node)
 
-    # clean end
+    # Clean up
     node.destroy_node()
     rclpy.shutdown()
 
-# Ros Node Class:
+# ROS Node Class:
 class StraightCtrl:
     def __init__(self, rosNode):
         self.rosNode = rosNode  # Store the rosNode instance
         self.obstacle_left = False
         self.obstacle_right = False
+        self.obstacle_ahead = False  # New flag for obstacles ahead
+        self.initial_scan_done = False  # Flag for first scan state
         self.initializeRosNode()
 
     def initializeRosNode(self):
@@ -48,59 +50,86 @@ class StraightCtrl:
 
         # Initialize control callback:
         self._timForCtrl = self.rosNode.create_timer(
-            0.05, self.control_callback
+            0.1, self.control_callback  # Increased time for smoother updates
         )
 
     def scan_callback(self, scanMsg):
         self._logger.info('> get scan')
-        
-        # Define left and right ranges
+
+        # Skip scan handling until the first full scan is done
+        if not self.initial_scan_done:
+            self._logger.info('First scan completed, starting obstacle checks.')
+            self.initial_scan_done = True  # Mark that the first scan is done
+
+        # Define left, right, and ahead ranges
         left_ranges = []
         right_ranges = []
+        ahead_ranges = []
 
         # Get angle and range info
         angle_min = scanMsg.angle_min
         angle_max = scanMsg.angle_max
         angle_middle = (angle_min + angle_max) / 2
 
-        angle_min_2 = angle_min + (angle_middle /2)
-        angle_max_2 = angle_max - (angle_middle /2)
+        # Define angle ranges for left, right, and ahead
+        left_angle_range = (angle_min, angle_middle - 0.2)  # Left side angles
+        right_angle_range = (angle_middle + 0.2, angle_max)  # Right side angles
+        ahead_angle_range = (angle_min - 0.1, angle_max + 0.1)  # Ahead angles (slightly wider for robustness)
 
-        # Log angle and range between angle_min and angle_max_2
+        # Loop through the ranges to categorize left, right, and ahead ranges
         for i, range in enumerate(scanMsg.ranges):
             angle = angle_min + i * scanMsg.angle_increment
-            if angle_min <= angle <= angle_max:
-                self._logger.info(f'Angle: {angle}, Range: {range}')
+            if left_angle_range[0] <= angle <= left_angle_range[1]:
+                left_ranges.append(range)
+            elif right_angle_range[0] <= angle <= right_angle_range[1]:
+                right_ranges.append(range)
+            if ahead_angle_range[0] <= angle <= ahead_angle_range[1]:
+                ahead_ranges.append(range)
+
+        # Define a threshold for detecting an obstacle
+        obstacle_threshold = 1.0  # Set the distance threshold for obstacles (in meters)
+
+        # Check if there are obstacles within the defined left, right, and ahead ranges
+        self.obstacle_left = any(r < obstacle_threshold for r in left_ranges)
+        self.obstacle_right = any(r < obstacle_threshold for r in right_ranges)
+        self.obstacle_ahead = any(r < obstacle_threshold for r in ahead_ranges)
+
+        # Log the obstacle status
+        self._logger.info(f"Obstacle Left: {self.obstacle_left}, Obstacle Right: {self.obstacle_right}, Obstacle Ahead: {self.obstacle_ahead}")
 
     def control_callback(self):
         self._logger.info('< define control')
-        # Create a Twist message
+        # Create a Twist message for movement
         twist = Twist()
-    
-        # Check for obstacles and set velocities accordingly
-        if not self.obstacle_left and not self.obstacle_right:
-            # Move forward if no obstacles on either side
-            twist.linear.x = 0.1
-            twist.angular.z = 0.0
-        elif self.obstacle_left and self.obstacle_right:
-            # Move forward if no obstacles on either side
-            twist.linear.x = 0.1
-            twist.angular.z = 0.0
-        elif self.obstacle_left:
-            # Turn right if there's an obstacle on the left
-            twist.linear.x = 0.1
-            twist.angular.z = -0.2
-            self._logger.info('obstacle left')
-        elif self.obstacle_right:
-            # Turn left if there's an obstacle on the right
-            twist.linear.x = 0.1
-            twist.angular.z = 0.2
-            self._logger.info('obstacle right')
-        else:
-            self._logger.info('error')
-        # Publish the velocity command
+
+        # If no obstacles ahead, move forward
+        if not self.obstacle_ahead:
+            twist.linear.x = 0.3  # Move forward at moderate speed
+            twist.angular.z = 0.0  # No rotation
+            self._logger.info('No obstacles ahead, moving forward.')
+
+        # If obstacle detected ahead, check left and right
+        elif self.obstacle_ahead:
+            # Stop moving forward
+            twist.linear.x = 0.0  
+            twist.angular.z = 0.0  # Stop turning as we will decide direction
+
+            # If there is no obstacle on the left, turn left and move forward
+            if not self.obstacle_left:
+                twist.angular.z = 0.5  # Turn left
+                twist.linear.x = 0.3   # Move forward
+                self._logger.info('Obstacle ahead, turning left.')
+            
+            # If there is no obstacle on the right, turn right and move forward
+            elif not self.obstacle_right:
+                twist.angular.z = -0.5  # Turn right
+                twist.linear.x = 0.3    # Move forward
+                self._logger.info('Obstacle ahead, turning right.')
+
+        # Publish the velocity command to move
         self._pubVelocity.publish(twist)
 
 # Go:
 if __name__ == '__main__':
     main()
+
