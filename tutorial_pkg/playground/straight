@@ -7,6 +7,7 @@ from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
 from kobuki_ros_interfaces.msg import BumperEvent  # type: ignore
 from kobuki_ros_interfaces.msg import WheelDropEvent  # type: ignore
+from kobuki_ros_interfaces.msg import ButtonEvent  # type: ignore
 import math
 
 # ROS Node process:
@@ -52,6 +53,11 @@ class StraightCtrl:
             self.wheeldrop_callback, 10
         )
 
+        #Initialize buttons callback:
+        self._subToButtons = self.rosNode.create_subscription(
+            ButtonEvent, '/events/button',
+            self.button_callback, 10
+        )
 
         # Initialize publisher:
         self._pubVelocity = self.rosNode.create_publisher(
@@ -86,6 +92,12 @@ class StraightCtrl:
             self._logger.info('Wheeldrop detected, stopping the robot.')
             
 
+    def button_callback(self, msg):
+        self._logger.info(f'Button event received: {msg.data}')
+
+        if msg.button == 0 and msg.state == 1:
+            self.bumped = False
+            self._logger.info('Button released, resuming the robot.')
 
     def scan_callback(self, scanMsg):
         # Get angle and range info
