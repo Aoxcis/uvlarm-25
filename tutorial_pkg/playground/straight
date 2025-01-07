@@ -121,10 +121,16 @@ class StraightCtrl:
             # Check if the obstacle is within 0.1 meters (10 cm) and on the left or right
             if -math.pi/2 <= angle <= -math.pi/4:  # Left side
                 if 0.1 < dist < 0.4:
-                    self.obstacle_right = True
+                    if not -math.pi <= angle <= -math.pi/2:
+                        self.obstacle_right = False
+                    else:
+                        self.obstacle_right = True
             elif math.pi/4 <= angle <= math.pi/2:  # Right side
                 if 0.1 < dist < 0.4:
-                    self.obstacle_left = True
+                    if not math.pi <= angle <= math.pi/2:
+                        self.obstacle_left = False
+                    else:
+                        self.obstacle_left = True
 
         if not self.obstacle_left and not self.obstacle_right and dist >= 2:
             self.highSpeed = True
