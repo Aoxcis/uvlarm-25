@@ -35,6 +35,7 @@ class StraightCtrl:
         self.bumped = False
         self.highSpeed = False
         self.midSpeed = False
+        self.counter = 0
         self.initializeRosNode()
 
     def initializeRosNode(self):
@@ -146,6 +147,10 @@ class StraightCtrl:
         # Create a Twist message
         twist = Twist()
 
+        if self.counter > 10:
+            self.counter = 0
+            twist.linear.x = -0.3
+            twist.angular.z = 1.0
 
         if self.bumped:
             twist.linear.x = 0.0
@@ -161,14 +166,16 @@ class StraightCtrl:
                 if self.midSpeed:
                     twist.linear.x = 0.5
             elif self.obstacle_left and self.obstacle_right:
-                # Move forward if no obstacles on either side
+                self.counter += 1
                 twist.linear.x = 0.0
                 twist.angular.z = 1.0
             elif self.obstacle_left:
+                self.counter += 1
                 # Turn right if there's an obstacle on the left
                 twist.linear.x = 0.0
                 twist.angular.z = -1.0
             elif self.obstacle_right:
+                self.counter += 1
                 # Turn left if there's an obstacle on the right
                 twist.linear.x = 0.0
                 twist.angular.z = 1.0
