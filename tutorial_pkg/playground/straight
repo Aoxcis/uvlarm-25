@@ -6,6 +6,8 @@ from std_msgs.msg import String
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
 from kobuki_ros_interfaces.msg import BumperEvent  # type: ignore
+from kobuki_ros_interfaces.msg import WheelDropEvent  # type: ignore
+from kobuki_ros_interfaces.msg import ButtonEvent  # type: ignore
 import math
 
 # ROS Node process:
@@ -31,6 +33,8 @@ class StraightCtrl:
         self.obstacle_left = False
         self.obstacle_right = False
         self.bumped = False
+        self.highSpeed = False
+        self.midSpeed = False
         self.initializeRosNode()
 
     def initializeRosNode(self):
@@ -41,6 +45,18 @@ class StraightCtrl:
         self._subToBumper = self.rosNode.create_subscription(
             BumperEvent, '/events/bumper',
             self.bumper_callback, 10
+        )
+
+        # Initialize wheeldrop callback:
+        self._subToWheeldrop = self.rosNode.create_subscription(
+            WheelDropEvent, '/events/wheel_drop',
+            self.wheeldrop_callback, 10
+        )
+
+        #Initialize buttons callback:
+        self._subToButtons = self.rosNode.create_subscription(
+            ButtonEvent, '/events/button',
+            self.button_callback, 10
         )
 
         # Initialize publisher:
@@ -54,14 +70,12 @@ class StraightCtrl:
             self.scan_callback, 10
         )
 
-        
 
         # Initialize control callback:
         self._timForCtrl = self.rosNode.create_timer(
             0.1, self.control_callback  # Increased time for smoother updates
         )
 
-
     def bumper_callback(self, msg):
         self._logger.info(f'Bumper event received: {msg.state}')
 
@@ -70,16 +84,20 @@ class StraightCtrl:
             self._logger.info('Bumper pressed, stopping the robot.')
             
 
-
-
-    def bumper_callback(self, msg):
-        self._logger.info(f'Bumper event received: {msg.state}')
+    def wheeldrop_callback(self, msg):
+        self._logger.info(f'Wheeldrop event received: {msg.state}')
 
         if msg.state == 1:
             self.bumped = True
-            self._logger.info('Bumper pressed, stopping the robot.')
+            self._logger.info('Wheeldrop detected, stopping the robot.')
             
 
+    def button_callback(self, msg):
+        self._logger.info(f'Button event received from button: {msg.button} with state : {msg.state}')
+
+        if msg.button == 0 and msg.state == 1:
+            self.bumped = False
+            self._logger.info('Button released, resuming the robot.')
 
     def scan_callback(self, scanMsg):
         # Get angle and range info
@@ -102,11 +120,21 @@ class StraightCtrl:
 
             # Check if the obstacle is within 0.1 meters (10 cm) and on the left or right
             if -math.pi/2 <= angle <= -math.pi/4:  # Left side
-                if 0.1 < dist < 0.3:
+                if 0.1 < dist < 0.4:
                     self.obstacle_right = True
             elif math.pi/4 <= angle <= math.pi/2:  # Right side
-                if 0.1 < dist < 0.3:
+                if 0.1 < dist < 0.4:
                     self.obstacle_left = True
+
+        if not self.obstacle_left and not self.obstacle_right and dist >= 2:
+            self.highSpeed = True
+        else:
+            self.highSpeed = False
+
+        if not self.obstacle_left and not self.obstacle_right and dist >= 1:
+            self.midSpeed = True
+        else:
+            self.midSpeed = False
 
         # Log obstacle detection
         if self.obstacle_left:
@@ -118,16 +146,20 @@ class StraightCtrl:
         # Create a Twist message
         twist = Twist()
 
+
         if self.bumped:
             twist.linear.x = 0.0
             twist.angular.z = 0.0
-            self._logger.info('Robot is stopped due to bumper press.')
         else:
             # Check for obstacles and set velocities accordingly
             if not self.obstacle_left and not self.obstacle_right:
                 # Move forward if no obstacles on either side
                 twist.linear.x = 0.3
                 twist.angular.z = 0.0
+                if self.highSpeed:
+                    twist.linear.x = 0.8
+                if self.midSpeed:
+                    twist.linear.x = 0.5
             elif self.obstacle_left and self.obstacle_right:
                 # Move forward if no obstacles on either side
                 twist.linear.x = 0.0
