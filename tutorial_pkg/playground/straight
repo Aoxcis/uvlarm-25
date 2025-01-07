@@ -33,6 +33,7 @@ class StraightCtrl:
         self.obstacle_right = False
         self.bumped = False
         self.highSpeed = False
+        self.midSpeed = False
         self.initializeRosNode()
 
     def initializeRosNode(self):
@@ -107,16 +108,21 @@ class StraightCtrl:
 
             # Check if the obstacle is within 0.1 meters (10 cm) and on the left or right
             if -math.pi/2 <= angle <= -math.pi/4:  # Left side
-                if 0.1 < dist < 0.3:
+                if 0.1 < dist < 0.4:
                     self.obstacle_right = True
             elif math.pi/4 <= angle <= math.pi/2:  # Right side
-                if 0.1 < dist < 0.3:
+                if 0.1 < dist < 0.4:
                     self.obstacle_left = True
 
         if not self.obstacle_left and not self.obstacle_right and dist >= 2:
             self.highSpeed = True
         else:
             self.highSpeed = False
+
+        if not self.obstacle_left and not self.obstacle_right and dist >= 1:
+            self.midSpeed = True
+        else:
+            self.midSpeed = False
 
         # Log obstacle detection
         if self.obstacle_left:
@@ -140,6 +146,8 @@ class StraightCtrl:
                 twist.angular.z = 0.0
                 if self.highSpeed:
                     twist.linear.x = 0.8
+                if self.midSpeed:
+                    twist.linear.x = 0.5
             elif self.obstacle_left and self.obstacle_right:
                 # Move forward if no obstacles on either side
                 twist.linear.x = 0.0
