@@ -6,6 +6,7 @@ from std_msgs.msg import String
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
 from kobuki_ros_interfaces.msg import BumperEvent  # type: ignore
+from kobuki_ros_interfaces.msg import WheelDropEvent  # type: ignore
 import math
 
 # ROS Node process:
@@ -43,6 +44,13 @@ class StraightCtrl:
             self.bumper_callback, 10
         )
 
+        # Initialize wheeldrop callback:
+        self._subToWheeldrop = self.rosNode.create_subscription(
+            WheelDropEvent, '/events/wheel_drop',
+            self.wheeldrop_callback, 10
+        )
+
+
         # Initialize publisher:
         self._pubVelocity = self.rosNode.create_publisher(
             Twist, '/multi/cmd_nav', 10
@@ -54,13 +62,11 @@ class StraightCtrl:
             self.scan_callback, 10
         )
 
-        
 
         # Initialize control callback:
         self._timForCtrl = self.rosNode.create_timer(
             0.1, self.control_callback  # Increased time for smoother updates
         )
-
 
     def bumper_callback(self, msg):
         self._logger.info(f'Bumper event received: {msg.state}')
@@ -70,14 +76,12 @@ class StraightCtrl:
             self._logger.info('Bumper pressed, stopping the robot.')
             
 
-
-
-    def bumper_callback(self, msg):
-        self._logger.info(f'Bumper event received: {msg.state}')
+    def wheeldrop_callback(self, msg):
+        self._logger.info(f'Wheeldrop event received: {msg.state}')
 
         if msg.state == 1:
             self.bumped = True
-            self._logger.info('Bumper pressed, stopping the robot.')
+            self._logger.info('Wheeldrop detected, stopping the robot.')
             
 
 
@@ -118,10 +122,10 @@ class StraightCtrl:
         # Create a Twist message
         twist = Twist()
 
+
         if self.bumped:
             twist.linear.x = 0.0
             twist.angular.z = 0.0
-            self._logger.info('Robot is stopped due to bumper press.')
         else:
             # Check for obstacles and set velocities accordingly
             if not self.obstacle_left and not self.obstacle_right:
