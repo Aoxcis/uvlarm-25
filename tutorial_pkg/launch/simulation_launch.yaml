@@ -8,5 +8,7 @@ launch:
     exec: "rviz2"
     name: "rviz2"
 
-- executable:
-    cmd: gnome-terminal --tab -e 'ros2 run  teleop_twist_keyboard teleop_twist_keyboard'
+- node:
+    pkg: "tutorial_pkg"
+    exec: "basic_move"
+    name: "basic_move"

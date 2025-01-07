@@ -7,8 +7,8 @@ from sklearn.model_selection import train_test_split
 import joblib
 
 # Répertoires des images positives et négatives
-positive_dir = "/Users/othmaneirhboula/Downloads/positif_final"
-negative_dir = "/Users/othmaneirhboula/Downloads/negatif_final"
+positive_dir = "/Users/gregoire/Code/LARM/LARM/tuto_vision/Modele_precis/images/positif_final"
+negative_dir = "/Users/gregoire/Code/LARM/LARM/tuto_vision/Modele_precis/images/negatif_final"
 
 # Liste des fichiers dans les répertoires
 positive_images = [os.path.join(positive_dir, f) for f in os.listdir(positive_dir) if f.endswith('.jpg')]

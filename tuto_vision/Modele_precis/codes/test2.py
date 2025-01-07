@@ -39,7 +39,7 @@ def detect_objects(frame, svm_model, window_size=(200, 150), step_size=32):
             prediction = svm_model.decision_function(features)
 
             # Si la probabilité dépasse le seuil (par exemple, 0.7), considérer cela comme une détection
-            if prediction > 0.999:
+            if prediction > 0.999999999:
                 detected_boxes.append((
                     int(x * scale_x),
                     int(y * scale_y),
