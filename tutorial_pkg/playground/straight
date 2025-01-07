@@ -93,7 +93,7 @@ class StraightCtrl:
             
 
     def button_callback(self, msg):
-        self._logger.info(f'Button event received: {msg.button} - {msg.state}')
+        self._logger.info(f'Button event received from button: {msg.button} with state : {msg.state}')
 
         if msg.button == 0 and msg.state == 1:
             self.bumped = False
