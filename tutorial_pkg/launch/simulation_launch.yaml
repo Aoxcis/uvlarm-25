@@ -2,7 +2,7 @@ launch:
 
 - include:
     file: "$(find-pkg-share tbot_sim)/launch/challenge-1.launch.py"
-    file: "slam_toolbox online_sync_launch.py use_sim_time:=False"
+    #file: "$(find-pkg-share slam_toolbox)/online_sync_launch.py use_sim_time:=False"
 
 - node:
     pkg: "rviz2"
