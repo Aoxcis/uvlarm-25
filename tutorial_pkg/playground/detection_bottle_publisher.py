@@ -95,6 +95,8 @@ class Realsense(Node):
             x, y, w, h = cv2.boundingRect(most_green_contour)
             cv2.rectangle(color_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
             self.detection_publisher.publish(String(data=f"Most green object detected at: {x}, {y}"))
+        else:
+            self.detection_publisher.publish(String(data="No green object detected."))
 
         return color_image
 
