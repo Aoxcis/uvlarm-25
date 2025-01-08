@@ -7,7 +7,7 @@ from cv_bridge import CvBridge
 import rclpy
 from rclpy.node import Node
 
-image_path = '/home/o2p5/uvlarm-25/o2p5/tutorial_pkg/playground/bottle_template2.jpg'
+image_path = 'bottle_template.png'
 
 class Realsense(Node):
     def __init__(self, fps=60):

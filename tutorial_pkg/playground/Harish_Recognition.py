@@ -21,9 +21,9 @@ color_info = (0, 0, 255)
 rayon = 10
 
 # Template matching setup
-img_rgb_template = cv.imread('bottle_image.jpg')
+img_rgb_template = cv.imread('bottle_image.png')
 img_gray_template = cv.cvtColor(img_rgb_template, cv.COLOR_BGR2GRAY)
-template = cv.imread('bottle_template.jpg', 0)
+template = cv.imread('bottle_template.png', 0)
 w, h = template.shape[::-1]
 threshold_template = 0.3
 
