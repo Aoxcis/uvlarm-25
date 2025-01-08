@@ -79,7 +79,6 @@ class StraightCtrl:
             self.scan_callback, 10
         )
 
-
         # Initialize control callback:
         self._timForCtrl = self.rosNode.create_timer(
             0.1, self.control_callback  # Increased time for smoother updates

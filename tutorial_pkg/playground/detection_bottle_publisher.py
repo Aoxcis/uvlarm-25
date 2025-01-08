@@ -97,7 +97,6 @@ class Realsense(Node):
             self.detection_publisher.publish(String(data=f"Most green object detected at: {x}, {y}"))
         else:
             self.detection_publisher.publish(String(data="No green object detected."))
-
         return color_image
 
     def publish_imgs(self):
