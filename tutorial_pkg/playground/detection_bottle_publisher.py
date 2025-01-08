@@ -7,7 +7,6 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import String
 from cv_bridge import CvBridge
 
-
 class Realsense(Node):
     def __init__(self, fps=60):
         super().__init__('realsense_node')  # Node name
