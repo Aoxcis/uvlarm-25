@@ -73,7 +73,7 @@ while True:
     res = cv2.matchTemplate(gray, template_resized, cv2.TM_CCOEFF_NORMED)
 
     # Define a threshold to consider it a match
-    threshold = 0.9  # Adjusted for better accuracy
+    threshold = 0.15  # Adjusted for better accuracy
     loc = np.where(res >= threshold)  # Locations where the template matches
 
     # Check if there are any matches, and only then draw the rectangles
