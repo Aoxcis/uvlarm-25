@@ -1,17 +1,15 @@
-import cv2
-import numpy as np
-import pyrealsense2 as rs
-import os
-from std_msgs.msg import String
-from cv_bridge import CvBridge
 import rclpy
 from rclpy.node import Node
-
-image_path = '/home/o2p5/uvlarm-25/o2p5/tutorial_pkg/playground/bottle_template2.jpg'
+import pyrealsense2 as rs
+import numpy as np
+import cv2
+from sensor_msgs.msg import Image
+from std_msgs.msg import String
+from cv_bridge import CvBridge
 
 class Realsense(Node):
     def __init__(self, fps=60):
-        super().__init__('detection_node')  # Node name
+        super().__init__('realsense_node')  # Node name
         self.pipeline = rs.pipeline()
         self.config = rs.config()
         self.bridge = CvBridge()
@@ -28,88 +26,122 @@ class Realsense(Node):
             self.get_logger().error(f"Error starting the pipeline: {e}")
             exit(1)
 
-        # Create detection publisher
+        # Create image publishers
+        self.color_publisher = self.create_publisher(Image, 'camera/color', 10)
+        self.depth_publisher = self.create_publisher(Image, 'camera/depth', 10)
         self.detection_publisher = self.create_publisher(String, 'detection', 10)
 
-    def detect_bottle(self, template_resized, w, h):
-        align_to = rs.stream.color
-        align = rs.align(align_to)
+    def read_imgs(self):
+        # Capture frames
+        frames = self.pipeline.wait_for_frames()
+        color_frame = frames.get_color_frame()
+        depth_frame = frames.get_depth_frame()
 
-        while True:
-            # Wait for a coherent set of frames: depth and color
-            frames = self.pipeline.wait_for_frames()
-            aligned_frames = align.process(frames)
+        if not color_frame or not depth_frame:
+            self.get_logger().warn("Failed to get frames from camera.")
+            return None, None
 
-            # Get aligned frames
-            color_frame = aligned_frames.get_color_frame()
+        # Convert frames to numpy arrays
+        color_image = np.asanyarray(color_frame.get_data())
+        depth_image = np.asanyarray(depth_frame.get_data())
 
-            if not color_frame:
-                continue
+        # Apply colormap to depth image (optional)
+        depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.03), cv2.COLORMAP_JET)
 
-            # Convert color image to numpy array
-            color_image = np.asanyarray(color_frame.get_data())
+        return color_image, depth_colormap, depth_image
 
-            # Convert the frame to grayscale (template matching requires grayscale images)
-            gray = cv2.cvtColor(color_image, cv2.COLOR_BGR2GRAY)
+    def process_green_object(self, color_image):
+        # Convert the color image to HSV (better for color detection)
+        hsv = cv2.cvtColor(color_image, cv2.COLOR_BGR2HSV)
 
-            # Apply template matching to find the bottle in the frame
-            res = cv2.matchTemplate(gray, template_resized, cv2.TM_CCOEFF_NORMED)
+        # Define the range for green color in HSV space
+        lower_green = np.array([35, 40, 40])  # Lower bound for green
+        upper_green = np.array([85, 255, 255])  # Upper bound for green
 
-            # Define a threshold to consider it a match
-            threshold = 0.9
-            loc = np.where(res >= threshold)
+        # Create a mask to extract the green regions
+        mask = cv2.inRange(hsv, lower_green, upper_green)
 
-            # Check if there are any matches, and only then draw the rectangles
-            if loc[0].size > 0:
-                for pt in zip(*loc[::-1]):
-                    # Draw rectangles around the matches
-                    cv2.rectangle(color_image, pt, (pt[0] + w, pt[1] + h), (0, 0, 255), 2)
-                    self.detection_publisher.publish(String(data=f"Bottle detected at: {pt}"))
-            else:
-                self.detection_publisher.publish(String(data="No matches found."))
+        # Perform morphological operations to clean the mask (optional)
+        kernel = np.ones((5, 5), np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
-            # Display the resulting frame with the detected bottle
-            cv2.imshow('Bottle Detection', color_image)
+        # Find contours of the green regions
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-            # Break the loop when the user presses the 'q' key
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+        # Variable to store the "most green" contour
+        most_green_contour = None
+        max_mean_green = 0  # To store the highest mean green intensity
 
-        # Release the RealSense pipeline and close any OpenCV windows
-        self.pipeline.stop()
-        cv2.destroyAllWindows()
+        # Iterate through all contours to find the "most green" object
+        for contour in contours:
+            if cv2.contourArea(contour) > 500:  # Ignore small contours
+                # Get bounding box around contour
+                x, y, w, h = cv2.boundingRect(contour)
+
+                # Crop the region of the contour from the original image
+                roi = color_image[y:y + h, x:x + w]
+
+                # Convert ROI to HSV and calculate the mean green intensity
+                hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+                mean_green = np.mean(hsv_roi[:, :, 1])  # Mean value of the Saturation channel
+
+                # If this contour has a higher mean green intensity, update the "most green" object
+                if mean_green > max_mean_green:
+                    max_mean_green = mean_green
+                    most_green_contour = contour
+
+        # If a most green contour is found, draw a bounding box around it
+        if most_green_contour is not None:
+            x, y, w, h = cv2.boundingRect(most_green_contour)
+            cv2.rectangle(color_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            self.detection_publisher.publish(String(data=f"Most green object detected at: {x}, {y}"))
+
+        return color_image
+
+    def publish_imgs(self):
+        color_image, depth_colormap, depth_image = self.read_imgs()
+
+        if color_image is not None:
+            # Process the color image to detect the most green object
+            color_image = self.process_green_object(color_image)
+
+            # Convert color image to ROS message
+            msg_color = self.bridge.cv2_to_imgmsg(color_image, "bgr8")
+            msg_color.header.stamp = self.get_clock().now().to_msg()
+            msg_color.header.frame_id = "camera_color_frame"
+            self.color_publisher.publish(msg_color)
+
+            # Show the processed image with bounding box in an OpenCV window
+            cv2.imshow("Most Green Object Detection", color_image)
+
+        if depth_colormap is not None:
+            # Convert depth image to ROS message
+            msg_depth = self.bridge.cv2_to_imgmsg(depth_image, "mono16")
+            msg_depth.header.stamp = self.get_clock().now().to_msg()
+            msg_depth.header.frame_id = "camera_depth_frame"
+            self.depth_publisher.publish(msg_depth)
+
+            # Show the depth map in a separate OpenCV window
+            cv2.imshow("Depth Map", depth_colormap)
+
+        # Ensure OpenCV windows are updated
+        cv2.waitKey(1)
 
 
-def lancer_detection(args=None):
+def process_img(args=None):
     rclpy.init(args=args)
     rs_node = Realsense()
 
-    if not os.path.isfile(image_path):
-        rs_node.get_logger().error(f"The image file does not exist at the path: {image_path}")
-        rclpy.shutdown()
-        return
+    while rclpy.ok():
+        rs_node.publish_imgs()
+        rs_node.get_logger().info("Publishing images...")
+        rclpy.spin_once(rs_node, timeout_sec=0.001)  # Non-blocking spin to ensure windows update
 
-    rs_node.get_logger().info(f"Image file exists at the path: {image_path}")
-
-    # Load the bottle template
-    template = cv2.imread(image_path, 0)
-
-    # Resize the template
-    scale_factor = 0.5
-    new_width = int(template.shape[1] * scale_factor)
-    new_height = int(template.shape[0] * scale_factor)
-    template_resized = cv2.resize(template, (new_width, new_height))
-
-    # Get the width and height of the resized template
-    w, h = template_resized.shape[::-1]
-
-    try:
-        rs_node.detect_bottle(template_resized, w, h)
-    except Exception as e:
-        rs_node.get_logger().error(f"Error during detection: {e}")
-    finally:
-        rclpy.shutdown()
+    # Stop streaming and shutdown node
+    rs_node.pipeline.stop()
+    rs_node.destroy_node()
+    rclpy.shutdown()
 
 
 if __name__ == '__main__':
-    lancer_detection()
+    process_img()
