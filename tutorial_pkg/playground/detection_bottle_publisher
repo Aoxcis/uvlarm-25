@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 import rclpy
 from rclpy.node import Node
 import pyrealsense2 as rs
@@ -94,7 +95,10 @@ class Realsense(Node):
         if most_green_contour is not None:
             x, y, w, h = cv2.boundingRect(most_green_contour)
             cv2.rectangle(color_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            self.detection_publisher.publish(String(data=f"Most green object detected at: {x}, {y}"))
+            #droite = 824   gauche = 0
+            message = "droite" if x > 550 else "centre" if 275 < x < 550 else "gauche"
+            self.detection_publisher.publish(String(data=f"Most green object detected at: {x}, {y} direction:"+message))
+
         else:
             self.detection_publisher.publish(String(data="No green object detected."))
         return color_image
