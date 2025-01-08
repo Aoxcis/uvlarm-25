@@ -9,3 +9,8 @@ launch:
     pkg: "tutorial_pkg"
     exec: "straight"
     name: "straight"
+
+- node:
+    pkg: "tutorial_pkg"
+    exec: "detection_bottle_publisher"
+    name: "detection_bottle_publisher"
