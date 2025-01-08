@@ -10,5 +10,5 @@ launch:
 
 - node:
     pkg: "tutorial_pkg"
-    exec: "basic_move"
-    name: "basic_move"
+    exec: "straight_sim"
+    name: "straight_sim"

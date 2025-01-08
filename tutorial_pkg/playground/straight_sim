@@ -1,0 +1,218 @@
+#!/usr/bin/python3
+import sys
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import Twist
+from kobuki_ros_interfaces.msg import BumperEvent  # type: ignore
+from kobuki_ros_interfaces.msg import WheelDropEvent  # type: ignore
+from kobuki_ros_interfaces.msg import ButtonEvent  # type: ignore
+import math
+import time
+
+# ROS Node process:
+def main():
+    # Initialize ROS and a ROS node
+    rclpy.init(args=sys.argv)
+    node = Node('basic_move_sim')
+
+    # Initialize control class
+    control = StraightCtrl(node)  # Pass the node to the constructor
+
+    # Infinite loop for ROS to keep running
+    rclpy.spin(node)
+
+    # Clean up
+    node.destroy_node()
+    rclpy.shutdown()
+
+# ROS Node Class:
+class StraightCtrl:
+    def __init__(self, rosNode):
+        self.rosNode = rosNode  # Store the rosNode instance
+        self.obstacle_left = False
+        self.obstacle_right = False
+        self.bumped = False
+        self.highSpeed = False
+        self.midSpeed = False
+        self.counter = 0
+        self.turnRight = False
+        self.turnLeft = False
+
+        self.initializeRosNode()
+
+    def initializeRosNode(self):
+        # Get logger from the node:
+        self._logger = self.rosNode.get_logger()
+
+        # Initialize bumper callback:
+        self._subToBumper = self.rosNode.create_subscription(
+            BumperEvent, '/events/bumper',
+            self.bumper_callback, 10
+        )
+
+        # Initialize wheeldrop callback:
+        self._subToWheeldrop = self.rosNode.create_subscription(
+            WheelDropEvent, '/events/wheel_drop',
+            self.wheeldrop_callback, 10
+        )
+
+        #Initialize buttons callback:
+        self._subToButtons = self.rosNode.create_subscription(
+            ButtonEvent, '/events/button',
+            self.button_callback, 10
+        )
+
+        # Initialize publisher:
+        self._pubVelocity = self.rosNode.create_publisher(
+            Twist, '/cmd_vel', 10
+        )
+
+        # Initialize scan callback:
+        self._subToScan = self.rosNode.create_subscription(
+            LaserScan, '/scan',
+            self.scan_callback, 10
+        )
+
+
+        # Initialize control callback:
+        self._timForCtrl = self.rosNode.create_timer(
+            0.1, self.control_callback  # Increased time for smoother updates
+        )
+
+    def bumper_callback(self, msg):
+        self._logger.info(f'Bumper event received: {msg.state}')
+
+        if msg.state == 1:
+            self.bumped = True
+            self._logger.info('Bumper pressed, stopping the robot.')
+            
+
+    def wheeldrop_callback(self, msg):
+        self._logger.info(f'Wheeldrop event received: {msg.state}')
+
+        if msg.state == 1:
+            self.bumped = True
+            self._logger.info('Wheeldrop detected, stopping the robot.')
+            
+
+    def button_callback(self, msg):
+        self._logger.info(f'Button event received from button: {msg.button} with state : {msg.state}')
+
+        if msg.button == 0 and msg.state == 1:
+            self.bumped = False
+            self._logger.info('Button released, resuming the robot.')
+
+    def scan_callback(self, scanMsg):
+        # Get angle and range info
+        angle_min = scanMsg.angle_min
+        angle_max = scanMsg.angle_max
+        angle_increment = scanMsg.angle_increment
+        angle_middle = (angle_min + angle_max) / 2
+        
+        # Reset the obstacle flags at the start of each scan
+        self.obstacle_left = False
+        self.obstacle_right = False
+
+        # Iterate over the ranges and classify them based on angle
+        for i, dist in enumerate(scanMsg.ranges):
+            angle = angle_min + i * angle_increment
+
+            # Ignore invalid ranges (e.g., 0.0 or NaN)
+            if dist <= 0.0 or dist == float('inf'):
+                continue
+
+            # Check if the obstacle is within 0.1 meters (10 cm) and on the left or right
+            if -math.pi/2 <= angle <= -math.pi/4:  # Left side
+                if 0.1 < dist < 0.4:
+                    self.obstacle_right = True
+            elif math.pi/4 <= angle <= math.pi/2:  # Right side
+                if 0.1 < dist < 0.4:
+                    self.obstacle_left = True
+
+        if not self.obstacle_left and not self.obstacle_right and dist >= 2:
+            self.highSpeed = True
+        else:
+            self.highSpeed = False
+
+        if not self.obstacle_left and not self.obstacle_right and dist >= 1:
+            self.midSpeed = True
+        else:
+            self.midSpeed = False
+
+        # Log obstacle detection
+        if self.obstacle_left:
+            self._logger.info('Obstacle detected on the left!')
+        if self.obstacle_right:
+            self._logger.info('Obstacle detected on the right!')
+
+    def control_callback(self):
+        # Create a Twist message
+        twist = Twist()
+        self._logger.info('Counter at: ' + str(self.counter))
+        if self.counter >= 4:
+            self.counter = 0
+            twist.linear.x = -0.3
+            start_time = time.time()  
+            while time.time() - start_time < 2:  
+                self._pubVelocity.publish(twist)
+                time.sleep(0.1)  
+            twist.linear.x = 0.0
+            self._pubVelocity.publish(twist)
+
+            twist.angular.z = 1.0
+            start_time = time.time()  
+            while time.time() - start_time < 2:  
+                self._pubVelocity.publish(twist)
+                time.sleep(0.1)  
+            twist.angular.z = 0.0
+            self._pubVelocity.publish(twist)
+
+        if self.bumped:
+            twist.linear.x = 0.0
+            twist.angular.z = 0.0
+        else:
+            # Check for obstacles and set velocities accordingly
+            if not self.obstacle_left and not self.obstacle_right:
+                self.counter = 0
+                # Move forward if no obstacles on either side
+                twist.linear.x = 0.3
+                twist.angular.z = 0.0
+                """ if self.highSpeed:
+                    twist.linear.x = 0.8
+                if self.midSpeed:
+                    twist.linear.x = 0.5 """
+            elif self.obstacle_left and self.obstacle_right:
+                if not self.turnLeft:
+                    self.counter += 1
+                self.turnRight = False
+                self.turnLeft = True
+                twist.linear.x = 0.0
+                twist.angular.z = 1.0
+            elif self.obstacle_left:
+                if not self.turnRight:
+                    self.counter += 1
+                self.turnRight = True
+                self.turnLeft = False
+                # Turn right if there's an obstacle on the left
+                twist.linear.x = 0.0
+                twist.angular.z = -1.0
+            elif self.obstacle_right:
+                if not self.turnLeft:
+                    self.counter += 1
+                self.turnRight = False
+                self.turnLeft = True
+                # Turn left if there's an obstacle on the right
+                twist.linear.x = 0.0
+                twist.angular.z = 1.0
+            else:
+                self._logger.info('error')
+
+        # Publish the velocity command
+        self._pubVelocity.publish(twist)
+
+# Go:
+if __name__ == '__main__':
+    main()
+
