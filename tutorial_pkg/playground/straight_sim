@@ -137,13 +137,35 @@ class StraightCtrl:
 
         if not self.obstacle_left and not self.obstacle_right and dist >= 2:
             self.highSpeed = True
-        else:
-            self.highSpeed = False
-
-        if not self.obstacle_left and not self.obstacle_right and dist >= 1:
-            self.midSpeed = True
-        else:
             self.midSpeed = False
+            self.midLowSpeed = False
+            self.LowSpeed = False
+            self.midHighSpeed = False
+        elif not self.obstacle_left and not self.obstacle_right and dist >= 1.75:
+            self.midHighSpeed = True
+            self.highSpeed = False
+            self.midSpeed = False
+            self.midLowSpeed = False
+            self.LowSpeed = False
+        elif not self.obstacle_left and not self.obstacle_right and dist >= 1.25:
+            self.midSpeed = True
+            self.highSpeed = False
+            self.midHighSpeed = False
+            self.midLowSpeed = False
+            self.LowSpeed = False
+        elif not self.obstacle_left and not self.obstacle_right and dist >= 1:
+            self.midLowSpeed = True
+            self.highSpeed = False
+            self.midSpeed = False
+            self.midHighSpeed = False
+            self.LowSpeed = False
+        else:
+            self.LowSpeed = True
+            self.highSpeed = False
+            self.midSpeed = False
+            self.midLowSpeed = False
+            self.midHighSpeed = False
+            
 
         # Log obstacle detection
         if self.obstacle_left:
@@ -183,10 +205,10 @@ class StraightCtrl:
                 # Move forward if no obstacles on either side
                 twist.linear.x = 0.3
                 twist.angular.z = 0.0
-                """ if self.highSpeed:
+                if self.highSpeed:
                     twist.linear.x = 0.8
                 if self.midSpeed:
-                    twist.linear.x = 0.5 """
+                    twist.linear.x = 0.5
             elif self.obstacle_left and self.obstacle_right:
                 if not self.turnLeft:
                     self.counter += 1
