@@ -75,7 +75,7 @@ class Realsense(Node):
 
         # Iterate through all contours to find the "most green" object
         for contour in contours:
-            if cv2.contourArea(contour) > 500:  # Ignore small contours
+            if cv2.contourArea(contour) > 1000:  # Ignore small contours
                 # Get bounding box around contour
                 x, y, w, h = cv2.boundingRect(contour)
 
