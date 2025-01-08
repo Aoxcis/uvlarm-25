@@ -3,7 +3,7 @@ import numpy as np
 import pyrealsense2 as rs
 import os
 
-image_path = 'bottle_template2.jpg'
+image_path = '/home/o2p5/uvlarm-25/o2p5/tutorial_pkg/playground/bottle_template2.jpg'
 
 # Check if the file exists at the given path
 if not os.path.isfile(image_path):
