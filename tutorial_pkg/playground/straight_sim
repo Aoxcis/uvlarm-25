@@ -43,6 +43,10 @@ class StraightCtrl:
         self.initializeRosNode()
 
     def initializeRosNode(self):
+        self._subToDetection = self.rosNode.create_subscription(
+            String, '/detection',
+            self.detection_callback, 10
+        )
         # Get logger from the node:
         self._logger = self.rosNode.get_logger()
 
@@ -75,12 +79,12 @@ class StraightCtrl:
             self.scan_callback, 10
         )
 
-
         # Initialize control callback:
         self._timForCtrl = self.rosNode.create_timer(
             0.1, self.control_callback  # Increased time for smoother updates
         )
-
+    def detection_callback(self, msg):
+        self._logger.info(f'Detection event received: {msg.data}')
     def bumper_callback(self, msg):
         self._logger.info(f'Bumper event received: {msg.state}')
 
@@ -133,13 +137,35 @@ class StraightCtrl:
 
         if not self.obstacle_left and not self.obstacle_right and dist >= 2:
             self.highSpeed = True
-        else:
-            self.highSpeed = False
-
-        if not self.obstacle_left and not self.obstacle_right and dist >= 1:
-            self.midSpeed = True
-        else:
             self.midSpeed = False
+            self.midLowSpeed = False
+            self.LowSpeed = False
+            self.midHighSpeed = False
+        elif not self.obstacle_left and not self.obstacle_right and dist >= 1.75:
+            self.midHighSpeed = True
+            self.highSpeed = False
+            self.midSpeed = False
+            self.midLowSpeed = False
+            self.LowSpeed = False
+        elif not self.obstacle_left and not self.obstacle_right and dist >= 1.25:
+            self.midSpeed = True
+            self.highSpeed = False
+            self.midHighSpeed = False
+            self.midLowSpeed = False
+            self.LowSpeed = False
+        elif not self.obstacle_left and not self.obstacle_right and dist >= 1:
+            self.midLowSpeed = True
+            self.highSpeed = False
+            self.midSpeed = False
+            self.midHighSpeed = False
+            self.LowSpeed = False
+        else:
+            self.LowSpeed = True
+            self.highSpeed = False
+            self.midSpeed = False
+            self.midLowSpeed = False
+            self.midHighSpeed = False
+            
 
         # Log obstacle detection
         if self.obstacle_left:
@@ -179,10 +205,10 @@ class StraightCtrl:
                 # Move forward if no obstacles on either side
                 twist.linear.x = 0.3
                 twist.angular.z = 0.0
-                """ if self.highSpeed:
+                if self.highSpeed:
                     twist.linear.x = 0.8
                 if self.midSpeed:
-                    twist.linear.x = 0.5 """
+                    twist.linear.x = 0.5
             elif self.obstacle_left and self.obstacle_right:
                 if not self.turnLeft:
                     self.counter += 1

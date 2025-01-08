@@ -2,6 +2,9 @@ launch:
 
 - include:
     file: "$(find-pkg-share tbot_sim)/launch/challenge-1.launch.py"
+    
+- include:
+    file: "/opt/ros/iron/share/slam_toolbox/launch/online_sync_launch.py"
 
 - node:
     pkg: "rviz2"

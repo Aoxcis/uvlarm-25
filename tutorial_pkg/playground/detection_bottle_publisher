@@ -75,7 +75,7 @@ class Realsense(Node):
 
         # Iterate through all contours to find the "most green" object
         for contour in contours:
-            if cv2.contourArea(contour) > 500:  # Ignore small contours
+            if cv2.contourArea(contour) > 1000:  # Ignore small contours
                 # Get bounding box around contour
                 x, y, w, h = cv2.boundingRect(contour)
 
@@ -124,7 +124,7 @@ class Realsense(Node):
             msg_depth = self.bridge.cv2_to_imgmsg(depth_image, "mono16")
             msg_depth.header.stamp = self.get_clock().now().to_msg()
             msg_depth.header.frame_id = "camera_depth_frame"
-            # self.depth_publisher.publish(msg_depth)
+            self.depth_publisher.publish(msg_depth)
 
             # Show the depth map in a separate OpenCV window
             cv2.imshow("Depth Map", depth_colormap)

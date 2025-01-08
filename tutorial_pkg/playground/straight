@@ -27,6 +27,7 @@ def main():
     node.destroy_node()
     rclpy.shutdown()
 
+
 # ROS Node Class:
 class StraightCtrl:
     def __init__(self, rosNode):
@@ -43,6 +44,12 @@ class StraightCtrl:
         self.initializeRosNode()
 
     def initializeRosNode(self):
+        # Initialize subscribers and publishers
+        # Initialize detection subscription
+        self._subToDetection = self.rosNode.create_subscription(
+            String, '/detection',
+            self.detection_callback, 10
+        )
         # Get logger from the node:
         self._logger = self.rosNode.get_logger()
 
@@ -80,7 +87,8 @@ class StraightCtrl:
         self._timForCtrl = self.rosNode.create_timer(
             0.1, self.control_callback  # Increased time for smoother updates
         )
-
+    def detection_callback(self, msg):
+        self._logger.info(f'Detection event received: {msg.data}')
     def bumper_callback(self, msg):
         self._logger.info(f'Bumper event received: {msg.state}')
 
