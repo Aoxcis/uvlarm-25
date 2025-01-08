@@ -1,9 +1,11 @@
+#!/usr/bin/python3
 import rclpy
 from rclpy.node import Node
 import pyrealsense2 as rs
 import numpy as np
 import cv2
 from sensor_msgs.msg import Image
+from std_msgs.msg import String
 from cv_bridge import CvBridge
 
 class Realsense(Node):
@@ -28,6 +30,7 @@ class Realsense(Node):
         # Create image publishers
         self.color_publisher = self.create_publisher(Image, 'camera/color', 10)
         self.depth_publisher = self.create_publisher(Image, 'camera/depth', 10)
+        self.detection_publisher = self.create_publisher(String, 'detection', 10)
 
     def read_imgs(self):
         # Capture frames
@@ -77,7 +80,7 @@ class Realsense(Node):
                 x, y, w, h = cv2.boundingRect(contour)
 
                 # Crop the region of the contour from the original image
-                roi = color_image[y:y+h, x:x+w]
+                roi = color_image[y:y + h, x:x + w]
 
                 # Convert ROI to HSV and calculate the mean green intensity
                 hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
@@ -92,7 +95,12 @@ class Realsense(Node):
         if most_green_contour is not None:
             x, y, w, h = cv2.boundingRect(most_green_contour)
             cv2.rectangle(color_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            #droite = 824   gauche = 0
+            message = "droite" if x > 550 else "centre" if 275 < x < 550 else "gauche"
+            self.detection_publisher.publish(String(data=f"Most green object detected at: {x}, {y} direction:"+message))
 
+        else:
+            self.detection_publisher.publish(String(data="No green object detected."))
         return color_image
 
     def publish_imgs(self):
@@ -116,13 +124,14 @@ class Realsense(Node):
             msg_depth = self.bridge.cv2_to_imgmsg(depth_image, "mono16")
             msg_depth.header.stamp = self.get_clock().now().to_msg()
             msg_depth.header.frame_id = "camera_depth_frame"
-            self.depth_publisher.publish(msg_depth)
+            # self.depth_publisher.publish(msg_depth)
 
             # Show the depth map in a separate OpenCV window
             cv2.imshow("Depth Map", depth_colormap)
 
         # Ensure OpenCV windows are updated
         cv2.waitKey(1)
+
 
 def process_img(args=None):
     rclpy.init(args=args)
@@ -137,6 +146,7 @@ def process_img(args=None):
     rs_node.pipeline.stop()
     rs_node.destroy_node()
     rclpy.shutdown()
+
 
 if __name__ == '__main__':
     process_img()
