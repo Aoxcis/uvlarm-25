@@ -74,7 +74,7 @@ class Realsense(Node):
         detected_objects = []
 
         for contour in contours:
-            if cv2.contourArea(contour) < 500:  # Ignorer les petits objets
+            if cv2.contourArea(contour) < 140:  # Ignorer les petits objets
                 continue
 
             # Obtenir les coordonnées du contour
