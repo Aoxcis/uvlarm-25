@@ -40,12 +40,17 @@ class StraightCtrl:
         self.counter = 0
         self.turnRight = False
         self.turnLeft = False
+        self.last_linear_x = 0.0  # Track last linear velocity for smooth transition
+        self.last_angular_z = 0.0  # Track last angular velocity for smooth transition
 
+        self.max_linear_speed = 0.5  # Max forward speed (m/s)
+        self.max_angular_speed = 0.6  # Max angular speed (rad/s)
+        self.acceleration = 0.05  # Rate of acceleration
+        self.angleAcceleration = 0.2  # Rate of acceleration for angular velocity
         self.initializeRosNode()
 
     def initializeRosNode(self):
         # Initialize subscribers and publishers
-        # Initialize detection subscription
         self._subToDetection = self.rosNode.create_subscription(
             String, '/detection',
             self.detection_callback, 10
@@ -53,61 +58,51 @@ class StraightCtrl:
         # Get logger from the node:
         self._logger = self.rosNode.get_logger()
 
-        # Initialize bumper callback:
         self._subToBumper = self.rosNode.create_subscription(
             BumperEvent, '/events/bumper',
             self.bumper_callback, 10
         )
 
-        # Initialize wheeldrop callback:
         self._subToWheeldrop = self.rosNode.create_subscription(
             WheelDropEvent, '/events/wheel_drop',
             self.wheeldrop_callback, 10
         )
 
-        #Initialize buttons callback:
         self._subToButtons = self.rosNode.create_subscription(
             ButtonEvent, '/events/button',
             self.button_callback, 10
         )
 
-        # Initialize publisher:
         self._pubVelocity = self.rosNode.create_publisher(
             Twist, '/multi/cmd_nav', 10
         )
 
-        # Initialize scan callback:
         self._subToScan = self.rosNode.create_subscription(
             LaserScan, '/scan',
             self.scan_callback, 10
         )
 
-
-        # Initialize control callback:
         self._timForCtrl = self.rosNode.create_timer(
             0.1, self.control_callback  # Increased time for smoother updates
         )
+
     def detection_callback(self, msg):
         self._logger.info(f'Detection event received: {msg.data}')
+
     def bumper_callback(self, msg):
         self._logger.info(f'Bumper event received: {msg.state}')
-
         if msg.state == 1:
             self.bumped = True
             self._logger.info('Bumper pressed, stopping the robot.')
-            
 
     def wheeldrop_callback(self, msg):
         self._logger.info(f'Wheeldrop event received: {msg.state}')
-
         if msg.state == 1:
             self.bumped = True
             self._logger.info('Wheeldrop detected, stopping the robot.')
-            
 
     def button_callback(self, msg):
-        self._logger.info(f'Button event received from button: {msg.button} with state : {msg.state}')
-
+        self._logger.info(f'Button event received from button: {msg.button} with state: {msg.state}')
         if msg.button == 0 and msg.state == 1:
             self.bumped = False
             self._logger.info('Button released, resuming the robot.')
@@ -132,33 +127,41 @@ class StraightCtrl:
                 continue
 
             # Check if the obstacle is within 0.1 meters (10 cm) and on the left or right
-            if -math.pi/2 <= angle <= -math.pi/4:  # Left side
-                if 0.1 < dist < 0.4:
+            if -math.pi/2 <= angle <= 0:  # Left side
+                if 0.1 < dist < 0.45:
                     self.obstacle_right = True
-            elif math.pi/4 <= angle <= math.pi/2:  # Right side
-                if 0.1 < dist < 0.4:
+            elif 0 <= angle <= math.pi/2:  # Right side
+                if 0.1 < dist < 0.45:
                     self.obstacle_left = True
-
-        if not self.obstacle_left and not self.obstacle_right and dist >= 2:
-            self.highSpeed = True
-        else:
-            self.highSpeed = False
-
-        if not self.obstacle_left and not self.obstacle_right and dist >= 1:
-            self.midSpeed = True
-        else:
-            self.midSpeed = False
+            if -math.pi/4 <= angle <= math.pi/4:  # Front side
+                if 0.1 < dist < 0.45:
+                    self.midSpeed = True
+                    self.highSpeed = False
+                else:
+                    self.midSpeed = False
+                    self.highSpeed = True
 
         # Log obstacle detection
-        if self.obstacle_left:
+        if self.obstacle_left and self.obstacle_right:
+            self._logger.info('Obstacle detected on both sides!')
+        elif self.obstacle_left:
             self._logger.info('Obstacle detected on the left!')
-        if self.obstacle_right:
+        elif self.obstacle_right:
             self._logger.info('Obstacle detected on the right!')
 
     def control_callback(self):
         # Create a Twist message
         twist = Twist()
         self._logger.info('Counter at: ' + str(self.counter))
+
+        if self.highSpeed:
+            twist.linear.x = 0.8
+            twist.angular.z = 0.0
+        elif self.midSpeed:
+            twist.linear.x = 0.5
+            twist.angular.z = 0.0
+
+
         if self.counter >= 4:
             self.counter = 0
             twist.linear.x = -0.3
@@ -183,38 +186,70 @@ class StraightCtrl:
             if not self.obstacle_left and not self.obstacle_right:
                 self.counter = 0
                 # Move forward if no obstacles on either side
-                twist.linear.x = 0.3
-                twist.angular.z = 0.0
+                target_linear_x = self.max_linear_speed  # Target forward speed
+                target_angular_z = 0.0  # No turning
+
+                # Smooth acceleration for linear and angular velocities
+                twist.linear.x = self.accelerate(self.last_linear_x, target_linear_x)
+                twist.angular.z = self.accelerate(self.last_angular_z, target_angular_z)
+
             elif self.obstacle_left and self.obstacle_right:
                 if not self.turnLeft:
                     self.counter += 1
                 self.turnRight = False
                 self.turnLeft = True
-                twist.linear.x = 0.0
-                twist.angular.z = 1.0
+                target_linear_x = 0.0
+                target_angular_z = self.max_angular_speed
+
+                twist.linear.x = self.accelerate(self.last_linear_x, target_linear_x)
+                twist.angular.z = self.accelerate(self.last_angular_z, target_angular_z)
+
             elif self.obstacle_left:
                 if not self.turnRight:
                     self.counter += 1
                 self.turnRight = True
                 self.turnLeft = False
-                # Turn right if there's an obstacle on the left
-                twist.linear.x = 0.0
-                twist.angular.z = -1.0
+                target_linear_x = 0.0
+                target_angular_z = -self.max_angular_speed
+
+                twist.linear.x = self.accelerate(self.last_linear_x, target_linear_x)
+                twist.angular.z = self.accelerate(self.last_angular_z, target_angular_z)
+
             elif self.obstacle_right:
                 if not self.turnLeft:
                     self.counter += 1
                 self.turnRight = False
                 self.turnLeft = True
-                # Turn left if there's an obstacle on the right
-                twist.linear.x = 0.0
-                twist.angular.z = 1.0
-            else:
-                self._logger.info('error')
+                target_linear_x = 0.0
+                target_angular_z = self.max_angular_speed
+
+                twist.linear.x = self.accelerate(self.last_linear_x, target_linear_x)
+                twist.angular.z = self.angleAccelerate(self.last_angular_z, target_angular_z)
+
+        # Update the last velocities
+        self.last_linear_x = twist.linear.x
+        self.last_angular_z = twist.angular.z
 
         # Publish the velocity command
         self._pubVelocity.publish(twist)
 
+    def accelerate(self, current_value, target_value):
+        """Smoothly accelerate or decelerate towards the target value."""
+        if current_value < target_value:
+            return min(current_value + self.acceleration, target_value)
+        elif current_value > target_value:
+            return max(current_value - self.acceleration, target_value)
+        return current_value
+    
+    def angleAccelerate(self, current_value, target_value):
+        """Smoothly accelerate or decelerate towards the target value."""
+        if current_value < target_value:
+            return min(current_value + self.angleAcceleration, target_value)
+        elif current_value > target_value:
+            return max(current_value - self.angleAcceleration, target_value)
+        return current_value
+
+
 # Go:
 if __name__ == '__main__':
     main()
-
