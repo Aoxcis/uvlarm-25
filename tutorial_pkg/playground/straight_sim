@@ -15,7 +15,7 @@ import time
 def main():
     # Initialize ROS and a ROS node
     rclpy.init(args=sys.argv)
-    node = Node('basic_move_sim')
+    node = Node('basic_move')
 
     # Initialize control class
     control = StraightCtrl(node)  # Pass the node to the constructor
@@ -27,6 +27,7 @@ def main():
     node.destroy_node()
     rclpy.shutdown()
 
+
 # ROS Node Class:
 class StraightCtrl:
     def __init__(self, rosNode):
@@ -34,14 +35,19 @@ class StraightCtrl:
         self.obstacle_left = False
         self.obstacle_right = False
         self.bumped = False
-        self.distance = 0.0
+        self.highSpeed = False
+        self.midSpeed = False
         self.counter = 0
         self.turnRight = False
         self.turnLeft = False
+        self.last_linear_x = 0.0  # Track last linear velocity for smooth transition
+        self.last_angular_z = 0.0  # Track last angular velocity for smooth transition
 
         self.initializeRosNode()
 
     def initializeRosNode(self):
+        # Initialize subscribers and publishers
+        # Initialize detection subscription
         self._subToDetection = self.rosNode.create_subscription(
             String, '/detection',
             self.detection_callback, 10
@@ -61,7 +67,7 @@ class StraightCtrl:
             self.wheeldrop_callback, 10
         )
 
-        #Initialize buttons callback:
+        # Initialize buttons callback:
         self._subToButtons = self.rosNode.create_subscription(
             ButtonEvent, '/events/button',
             self.button_callback, 10
@@ -82,28 +88,24 @@ class StraightCtrl:
         self._timForCtrl = self.rosNode.create_timer(
             0.1, self.control_callback  # Increased time for smoother updates
         )
+
     def detection_callback(self, msg):
         self._logger.info(f'Detection event received: {msg.data}')
-    
+
     def bumper_callback(self, msg):
         self._logger.info(f'Bumper event received: {msg.state}')
-
         if msg.state == 1:
             self.bumped = True
             self._logger.info('Bumper pressed, stopping the robot.')
-            
 
     def wheeldrop_callback(self, msg):
         self._logger.info(f'Wheeldrop event received: {msg.state}')
-
         if msg.state == 1:
             self.bumped = True
             self._logger.info('Wheeldrop detected, stopping the robot.')
-            
 
     def button_callback(self, msg):
-        self._logger.info(f'Button event received from button: {msg.button} with state : {msg.state}')
-
+        self._logger.info(f'Button event received from button: {msg.button} with state: {msg.state}')
         if msg.button == 0 and msg.state == 1:
             self.bumped = False
             self._logger.info('Button released, resuming the robot.')
@@ -131,24 +133,19 @@ class StraightCtrl:
             if -math.pi/2 <= angle <= -math.pi/4:  # Left side
                 if 0.1 < dist < 0.4:
                     self.obstacle_right = True
-                    self.distance = dist
-                    self._logger.info('Distance: ' + str(self.distance))
             elif math.pi/4 <= angle <= math.pi/2:  # Right side
                 if 0.1 < dist < 0.4:
                     self.obstacle_left = True
-                    self.distance = dist
-                    self._logger.info('Distance: ' + str(self.distance))
-            elif -math.pi/4 <= angle <= math.pi/4:  # Front side
-                self.distance = dist
-                self._logger.info('Distance: ' + str(self.distance))
-                if 0.1 < dist < 0.4:
-                    self.obstacle_left = True
-                    self.obstacle_right = True
-                    
-                    
 
-            
+        if not self.obstacle_left and not self.obstacle_right and dist >= 2:
+            self.highSpeed = True
+        else:
+            self.highSpeed = False
 
+        if not self.obstacle_left and not self.obstacle_right and dist >= 1:
+            self.midSpeed = True
+        else:
+            self.midSpeed = False
 
         # Log obstacle detection
         if self.obstacle_left:
@@ -156,26 +153,10 @@ class StraightCtrl:
         if self.obstacle_right:
             self._logger.info('Obstacle detected on the right!')
 
-
     def control_callback(self):
         # Create a Twist message
         twist = Twist()
         self._logger.info('Counter at: ' + str(self.counter))
-        if self.counter >= 4:
-            self.counter = 0
-            twist.linear.x = -0.3
-            start_time = time.time()  
-            while time.time() - start_time < 2:  
-                self._pubVelocity.publish(twist)
-            twist.linear.x = 0.0
-            self._pubVelocity.publish(twist)
-
-            twist.angular.z = 1.0
-            start_time = time.time()  
-            while time.time() - start_time < 2:  
-                self._pubVelocity.publish(twist)
-            twist.angular.z = 0.0
-            self._pubVelocity.publish(twist)
 
         if self.bumped:
             twist.linear.x = 0.0
@@ -185,45 +166,58 @@ class StraightCtrl:
             if not self.obstacle_left and not self.obstacle_right:
                 self.counter = 0
                 # Move forward if no obstacles on either side
-                if self.distance/5 < 0.7:
-                    twist.linear.x = self.distance/5
-                    twist.angular.z = 0.0
-                elif self.distance/5 < 0.3:
-                    twist.linear.x = 0.3
-                    twist.angular.z = 0.0
-                else:
-                    twist.linear.x = 0.7
-                    twist.angular.z = 0.0
+                target_linear_x = 0.3  # Target forward speed
+                target_angular_z = 0.0  # No turning
+
+                # Smooth acceleration for linear and angular velocities
+                twist.linear.x = self.smooth_transition(self.last_linear_x, target_linear_x, 0.05)
+                twist.angular.z = self.smooth_transition(self.last_angular_z, target_angular_z, 0.1)
+
             elif self.obstacle_left and self.obstacle_right:
                 if not self.turnLeft:
                     self.counter += 1
                 self.turnRight = False
                 self.turnLeft = True
-                twist.linear.x = 0.0
-                twist.angular.z = 1.0
+                target_linear_x = 0.0
+                target_angular_z = 1.0
+
+                twist.linear.x = self.smooth_transition(self.last_linear_x, target_linear_x, 0.05)
+                twist.angular.z = self.smooth_transition(self.last_angular_z, target_angular_z, 0.1)
+
             elif self.obstacle_left:
                 if not self.turnRight:
                     self.counter += 1
                 self.turnRight = True
                 self.turnLeft = False
-                # Turn right if there's an obstacle on the left
-                twist.linear.x = 0.0
-                twist.angular.z = -1.0
+                target_linear_x = 0.0
+                target_angular_z = -1.0
+
+                twist.linear.x = self.smooth_transition(self.last_linear_x, target_linear_x, 0.05)
+                twist.angular.z = self.smooth_transition(self.last_angular_z, target_angular_z, 0.1)
+
             elif self.obstacle_right:
                 if not self.turnLeft:
                     self.counter += 1
                 self.turnRight = False
                 self.turnLeft = True
-                # Turn left if there's an obstacle on the right
-                twist.linear.x = 0.0
-                twist.angular.z = 1.0
-            else:
-                self._logger.info('error')
+                target_linear_x = 0.0
+                target_angular_z = 1.0
+
+                twist.linear.x = self.smooth_transition(self.last_linear_x, target_linear_x, 0.05)
+                twist.angular.z = self.smooth_transition(self.last_angular_z, target_angular_z, 0.1)
 
         # Publish the velocity command
         self._pubVelocity.publish(twist)
 
+    def smooth_transition(self, current_value, target_value, rate):
+        """Smoothly transition the current value towards the target value."""
+        if current_value < target_value:
+            return min(current_value + rate, target_value)
+        elif current_value > target_value:
+            return max(current_value - rate, target_value)
+        return current_value
+
+
 # Go:
 if __name__ == '__main__':
     main()
-
