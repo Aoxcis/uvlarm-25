@@ -46,7 +46,7 @@ class StraightCtrl:
         self.max_linear_speed = 0.5  # Max forward speed (m/s)
         self.max_angular_speed = 0.6  # Max angular speed (rad/s)
         self.acceleration = 0.05  # Rate of acceleration
-        self.angleAcceleration = 0.1  # Rate of acceleration for angular velocity
+        self.angleAcceleration = 0.2  # Rate of acceleration for angular velocity
         self.initializeRosNode()
 
     def initializeRosNode(self):
@@ -161,6 +161,22 @@ class StraightCtrl:
             twist.linear.x = 0.5
             twist.angular.z = 0.0
 
+
+        if self.counter >= 4:
+            self.counter = 0
+            twist.linear.x = -0.3
+            start_time = time.time()  
+            while time.time() - start_time < 1:  
+                self._pubVelocity.publish(twist)
+            twist.linear.x = 0.0
+            self._pubVelocity.publish(twist)
+
+            twist.angular.z = 1.0
+            start_time = time.time()  
+            while time.time() - start_time < 2:  
+                self._pubVelocity.publish(twist)
+            twist.angular.z = 0.0
+            self._pubVelocity.publish(twist)
 
         if self.bumped:
             twist.linear.x = 0.0
