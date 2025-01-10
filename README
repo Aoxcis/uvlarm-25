@@ -4,7 +4,7 @@
 Ce projet intègre ROS2, Python, OpenCV et Intel RealSense. Pour le faire fonctionner sur une autre machine, les dépendances suivantes sont nécessaires :
 
 1. **ROS2** (Iron)  
-   Installation via les instructions officielles ROS : [https://docs.ros.org](https://docs.ros.org).
+   Installation via les instructions officielles ROS : [https://docs.ros.org/en/iron/Installation.html](https://docs.ros.org/en/iron/Installation.html).
 
 2. **Intel RealSense SDK 2.0**  
    - Installer `librealsense2-dev` et les outils RealSense.  
