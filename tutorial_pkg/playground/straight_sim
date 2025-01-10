@@ -34,8 +34,7 @@ class StraightCtrl:
         self.obstacle_left = False
         self.obstacle_right = False
         self.bumped = False
-        self.highSpeed = False
-        self.midSpeed = False
+        self.distance = 0.0
         self.counter = 0
         self.turnRight = False
         self.turnLeft = False
@@ -85,6 +84,7 @@ class StraightCtrl:
         )
     def detection_callback(self, msg):
         self._logger.info(f'Detection event received: {msg.data}')
+    
     def bumper_callback(self, msg):
         self._logger.info(f'Bumper event received: {msg.state}')
 
@@ -131,47 +131,31 @@ class StraightCtrl:
             if -math.pi/2 <= angle <= -math.pi/4:  # Left side
                 if 0.1 < dist < 0.4:
                     self.obstacle_right = True
+                    self.distance = dist
+                    self._logger.info('Distance: ' + str(self.distance))
             elif math.pi/4 <= angle <= math.pi/2:  # Right side
                 if 0.1 < dist < 0.4:
                     self.obstacle_left = True
+                    self.distance = dist
+                    self._logger.info('Distance: ' + str(self.distance))
+            elif -math.pi/4 <= angle <= math.pi/4:  # Front side
+                self.distance = dist
+                self._logger.info('Distance: ' + str(self.distance))
+                if 0.1 < dist < 0.4:
+                    self.obstacle_left = True
+                    self.obstacle_right = True
+                    
+                    
 
-        if not self.obstacle_left and not self.obstacle_right and dist >= 2:
-            self.highSpeed = True
-            self.midSpeed = False
-            self.midLowSpeed = False
-            self.LowSpeed = False
-            self.midHighSpeed = False
-        elif not self.obstacle_left and not self.obstacle_right and dist >= 1.75:
-            self.midHighSpeed = True
-            self.highSpeed = False
-            self.midSpeed = False
-            self.midLowSpeed = False
-            self.LowSpeed = False
-        elif not self.obstacle_left and not self.obstacle_right and dist >= 1.25:
-            self.midSpeed = True
-            self.highSpeed = False
-            self.midHighSpeed = False
-            self.midLowSpeed = False
-            self.LowSpeed = False
-        elif not self.obstacle_left and not self.obstacle_right and dist >= 1:
-            self.midLowSpeed = True
-            self.highSpeed = False
-            self.midSpeed = False
-            self.midHighSpeed = False
-            self.LowSpeed = False
-        else:
-            self.LowSpeed = True
-            self.highSpeed = False
-            self.midSpeed = False
-            self.midLowSpeed = False
-            self.midHighSpeed = False
             
+
 
         # Log obstacle detection
         if self.obstacle_left:
             self._logger.info('Obstacle detected on the left!')
         if self.obstacle_right:
             self._logger.info('Obstacle detected on the right!')
+
 
     def control_callback(self):
         # Create a Twist message
@@ -183,7 +167,6 @@ class StraightCtrl:
             start_time = time.time()  
             while time.time() - start_time < 2:  
                 self._pubVelocity.publish(twist)
-                time.sleep(0.1)  
             twist.linear.x = 0.0
             self._pubVelocity.publish(twist)
 
@@ -191,7 +174,6 @@ class StraightCtrl:
             start_time = time.time()  
             while time.time() - start_time < 2:  
                 self._pubVelocity.publish(twist)
-                time.sleep(0.1)  
             twist.angular.z = 0.0
             self._pubVelocity.publish(twist)
 
@@ -203,12 +185,15 @@ class StraightCtrl:
             if not self.obstacle_left and not self.obstacle_right:
                 self.counter = 0
                 # Move forward if no obstacles on either side
-                twist.linear.x = 0.3
-                twist.angular.z = 0.0
-                if self.highSpeed:
-                    twist.linear.x = 0.8
-                if self.midSpeed:
-                    twist.linear.x = 0.5
+                if self.distance/5 < 0.7:
+                    twist.linear.x = self.distance/5
+                    twist.angular.z = 0.0
+                elif self.distance/5 < 0.3:
+                    twist.linear.x = 0.3
+                    twist.angular.z = 0.0
+                else:
+                    twist.linear.x = 0.7
+                    twist.angular.z = 0.0
             elif self.obstacle_left and self.obstacle_right:
                 if not self.turnLeft:
                     self.counter += 1
