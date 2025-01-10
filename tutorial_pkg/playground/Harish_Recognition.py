@@ -19,26 +19,20 @@ align = rs.align(align_to)
 
 # Segmentation parameters using HSV color space (for green)
 color = 60  # Green hue value in HSV
-lo = np.array([color - 15, 50, 50])  # Lower bound of green
-hi = np.array([color + 15, 255, 255])  # Upper bound of green
+lo = np.array([color - 10, 100, 50])  # Lower bound of green
+hi = np.array([color + 10, 255, 255])  # Upper bound of green
 
 # Kernel for morphological operations (to remove small noise)
-kernel = np.ones((3, 3), np.uint8)
-
-# Minimum contour area (adjust as needed)
-min_contour_area = 1000
+kernel = np.ones((5, 5), np.uint8)
 
 # Function to get distance to object in the 3D space
 def get_distance_to_object(depth_frame, x, y):
-    # Get the distance at pixel (x, y)
     distance = depth_frame.get_distance(x, y)
     return distance
 
 # Function to create a distance heatmap
 def create_distance_heatmap(depth_frame):
-    # Convert depth to distance
     depth_image = np.asanyarray(depth_frame.get_data())
-    # Normalize the depth to fit a color range (0 to 255)
     depth_image_normalized = cv.normalize(depth_image, None, 0, 255, cv.NORM_MINMAX)
     depth_image_color = cv.applyColorMap(depth_image_normalized.astype(np.uint8), cv.COLORMAP_JET)
     return depth_image_color
@@ -60,7 +54,7 @@ try:
         # Convert color image to HSV
         hsv_image = cv.cvtColor(color_image, cv.COLOR_BGR2HSV)
 
-        # Create mask to detect green color
+        # Create mask to detect green color (tuned for more precise green)
         mask = cv.inRange(hsv_image, lo, hi)
 
         # Apply morphological operations to clean up the mask
@@ -76,30 +70,27 @@ try:
         # Prepare distance heatmap
         distance_heatmap = create_distance_heatmap(depth_frame)
 
-        # Flag to check if bottle is detected
-        bottle_detected = False
-
-        # Check contours and draw bounding boxes if the area is large enough
+        # Iterate over contours and draw bounding boxes for detected green objects
         for contour in contours:
-            if cv.contourArea(contour) > min_contour_area:  # Filter out small contours
-                x, y, w, h = cv.boundingRect(contour)
-                cv.rectangle(color_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                cv.putText(color_image, "Nuka Cola bottle detected!", (x, y - 10),
-                           cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            contour_area = cv.contourArea(contour)
 
-                # Calculate distance to the object at the center of the bounding box
-                center_x = x + w // 2
-                center_y = y + h // 2
-                distance = get_distance_to_object(depth_frame, center_x, center_y)
+            # Filter out very small contours to avoid noise
+            if contour_area < 500:
+                continue  # Ignore small contours that are likely noise
 
-                # Display the distance on the image
-                cv.putText(color_image, f"Distance: {distance:.2f}m", (x, y + h + 30),
-                           cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            # Get bounding box for the contour
+            x, y, w, h = cv.boundingRect(contour)
+            center_x = x + w // 2
+            center_y = y + h // 2
+            distance = get_distance_to_object(depth_frame, center_x, center_y)
 
-                bottle_detected = True
+            # Draw bounding box around detected green object
+            cv.rectangle(color_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            cv.putText(color_image, f"Distance: {distance:.2f}m", (x, y + h + 30),
+                       cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-        # Display the original color image with detected objects
-        cv.imshow("Green Nuka Cola Bottle Detection", color_image)
+        # Display the original color image with detected green objects
+        cv.imshow("Green Object Detection", color_image)
 
         # Display the distance heatmap
         cv.imshow("Distance Heatmap", distance_heatmap)
