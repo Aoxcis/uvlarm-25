@@ -80,7 +80,31 @@ colcon build
 source ./install/setup.bash
 ```
 
-## 7. Compilation and Execution
+## 7. Gazebo Installation
+If you plan to use Gazebo for simulation, you need to install the following Gazebo-related packages:
+
+- **Gazebo**:
+  ```bash
+  sudo apt install gazebo=11.10.2+dfsg-1
+  sudo apt install gazebo-common=11.10.2+dfsg-1
+  sudo apt install gazebo-plugin-base=11.10.2+dfsg-1
+  sudo apt install libgazebo-dev=11.10.2+dfsg-1
+  sudo apt install libgazebo11:amd64=11.10.2+dfsg-1
+  ```
+
+- **ROS2 Gazebo Packages**:
+  ```bash
+  sudo apt install ros-iron-gazebo-dev=3.7.0-3jammy.20230622.191804
+  sudo apt install ros-iron-gazebo-msgs=3.7.0-3jammy.20231117.090251
+  sudo apt install ros-iron-gazebo-plugins=3.7.0-3jammy.20231117.111548
+  sudo apt install ros-iron-gazebo-ros=3.7.0-3jammy.20231117.104944
+  sudo apt install ros-iron-gazebo-ros-pkgs=3.7.0-3jammy.20231117.114324
+  sudo apt install ros-iron-turtlebot3-gazebo
+  ```
+
+These packages are necessary for integrating Gazebo with ROS2, and for using Gazebo for robot simulation in the project.
+
+## 8. Compilation and Execution
 - Clone this repository into your ROS2 workspace.
 - From the root of the workspace, build the project:
 
@@ -92,9 +116,9 @@ source install/setup.bash
 - Launch a Python script, for example:
 
 ```bash
-ros2 launch grp_pibot25 simulation_v1_launch.yaml
+ros2 launch tutorial_pkg simulation_launch.yaml
 ```
 
-
+---
 
 By following these steps, you should be able to successfully set up and run the project on your machine.
