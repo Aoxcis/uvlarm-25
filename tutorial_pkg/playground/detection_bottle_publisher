@@ -9,144 +9,129 @@ from std_msgs.msg import String
 from cv_bridge import CvBridge
 
 class Realsense(Node):
-    def __init__(self, fps=60):
-        super().__init__('realsense_node')  # Node name
+    def __init__(self, fps=30):
+        super().__init__('realsense_node')  # Nom du nœud
         self.pipeline = rs.pipeline()
         self.config = rs.config()
         self.bridge = CvBridge()
 
-        # Configure the streams
-        self.config.enable_stream(rs.stream.color, 848, 480, rs.format.bgr8, fps)
-        self.config.enable_stream(rs.stream.depth, 848, 480, rs.format.z16, fps)
+        # Configuration des flux
+        self.config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, fps)
+        self.config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, fps)
 
-        # Start the pipeline
+        # Alignement des images
+        self.align_to = rs.stream.depth
+        self.align = rs.align(self.align_to)
+
+        # Démarrer le pipeline
         try:
             self.pipeline.start(self.config)
-            self.get_logger().info("RealSense pipeline started successfully.")
+            self.get_logger().info("Pipeline RealSense démarré avec succès.")
         except Exception as e:
-            self.get_logger().error(f"Error starting the pipeline: {e}")
+            self.get_logger().error(f"Erreur lors du démarrage du pipeline : {e}")
             exit(1)
 
-        # Create image publishers
+        # Publishers ROS
         self.color_publisher = self.create_publisher(Image, 'camera/color', 10)
         self.depth_publisher = self.create_publisher(Image, 'camera/depth', 10)
         self.detection_publisher = self.create_publisher(String, 'detection', 10)
 
-    def read_imgs(self):
-        # Capture frames
+        # Paramètres de détection
+        self.lower_green = np.array([50, 100, 50])  # Limite basse pour le vert
+        self.upper_green = np.array([70, 255, 255])  # Limite haute pour le vert
+        self.kernel = np.ones((5, 5), np.uint8)
+
+    def read_and_process_frames(self):
         frames = self.pipeline.wait_for_frames()
-        color_frame = frames.get_color_frame()
-        depth_frame = frames.get_depth_frame()
+        aligned_frames = self.align.process(frames)
+        depth_frame = aligned_frames.get_depth_frame()
+        color_frame = aligned_frames.get_color_frame()
 
-        if not color_frame or not depth_frame:
-            self.get_logger().warn("Failed to get frames from camera.")
-            return None, None
+        if not depth_frame or not color_frame:
+            self.get_logger().warn("Impossible de récupérer les frames.")
+            return None, None, None
 
-        # Convert frames to numpy arrays
+        # Obtenir les images couleur et profondeur
         color_image = np.asanyarray(color_frame.get_data())
         depth_image = np.asanyarray(depth_frame.get_data())
 
-        # Apply colormap to depth image (optional)
-        depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.03), cv2.COLORMAP_JET)
+        return color_image, depth_image, depth_frame
 
-        return color_image, depth_colormap, depth_image
+    def detect_green_objects(self, color_image, depth_frame):
+        # Convertir en espace HSV
+        hsv_image = cv2.cvtColor(color_image, cv2.COLOR_BGR2HSV)
 
-    def process_green_object(self, color_image):
-        # Convert the color image to HSV (better for color detection)
-        hsv = cv2.cvtColor(color_image, cv2.COLOR_BGR2HSV)
+        # Masque pour le vert
+        mask = cv2.inRange(hsv_image, self.lower_green, self.upper_green)
 
-        # Define the range for green color in HSV space
-        lower_green = np.array([35, 40, 40])  # Lower bound for green
-        upper_green = np.array([85, 255, 255])  # Upper bound for green
+        # Nettoyage du masque
+        mask = cv2.erode(mask, self.kernel, iterations=1)
+        mask = cv2.dilate(mask, self.kernel, iterations=1)
 
-        # Create a mask to extract the green regions
-        mask = cv2.inRange(hsv, lower_green, upper_green)
-
-        # Perform morphological operations to clean the mask (optional)
-        kernel = np.ones((5, 5), np.uint8)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-
-        # Find contours of the green regions
+        # Trouver les contours
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        # Variable to store the "most green" contour
-        most_green_contour = None
-        max_mean_green = 0  # To store the highest mean green intensity
+        detected_objects = []
 
-        # Iterate through all contours to find the "most green" object
         for contour in contours:
-            if cv2.contourArea(contour) > 1000:  # Ignore small contours
-                # Get bounding box around contour
-                x, y, w, h = cv2.boundingRect(contour)
+            if cv2.contourArea(contour) < 500:  # Ignorer les petits objets
+                continue
 
-                # Crop the region of the contour from the original image
-                roi = color_image[y:y + h, x:x + w]
+            # Obtenir les coordonnées du contour
+            x, y, w, h = cv2.boundingRect(contour)
+            center_x = x + w // 2
+            center_y = y + h // 2
+            distance = depth_frame.get_distance(center_x, center_y)
 
-                # Convert ROI to HSV and calculate the mean green intensity
-                hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-                mean_green = np.mean(hsv_roi[:, :, 1])  # Mean value of the Saturation channel
+            detected_objects.append((x, y, w, h, distance))
 
-                # If this contour has a higher mean green intensity, update the "most green" object
-                if mean_green > max_mean_green:
-                    max_mean_green = mean_green
-                    most_green_contour = contour
+        return detected_objects
 
-        # If a most green contour is found, draw a bounding box around it
-        if most_green_contour is not None:
-            x, y, w, h = cv2.boundingRect(most_green_contour)
+    def process_and_publish(self):
+        color_image, depth_image, depth_frame = self.read_and_process_frames()
+
+        if color_image is None:
+            return
+
+        detected_objects = self.detect_green_objects(color_image, depth_frame)
+
+        for x, y, w, h, distance in detected_objects:
             cv2.rectangle(color_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            #droite = 824   gauche = 0
-            message = "droite" if x > 550 else "centre" if 275 < x < 550 else "gauche"
-            self.detection_publisher.publish(String(data=f"Most green object detected at: {x}, {y} direction:"+message))
+            cv2.putText(color_image, f"Distance: {distance:.2f}m", (x, y - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            message = f"Object detected at ({x}, {y}), Distance: {distance:.2f}m"
+            self.detection_publisher.publish(String(data=message))
 
-        else:
-            self.detection_publisher.publish(String(data="No green object detected."))
-        return color_image
+        # Publier l'image couleur
+        msg_color = self.bridge.cv2_to_imgmsg(color_image, "bgr8")
+        msg_color.header.stamp = self.get_clock().now().to_msg()
+        msg_color.header.frame_id = "camera_color_frame"
+        self.color_publisher.publish(msg_color)
 
-    def publish_imgs(self):
-        color_image, depth_colormap, depth_image = self.read_imgs()
+        # Publier l'image de profondeur
+        msg_depth = self.bridge.cv2_to_imgmsg(depth_image, "mono16")
+        msg_depth.header.stamp = self.get_clock().now().to_msg()
+        msg_depth.header.frame_id = "camera_depth_frame"
+        self.depth_publisher.publish(msg_depth)
 
-        if color_image is not None:
-            # Process the color image to detect the most green object
-            color_image = self.process_green_object(color_image)
-
-            # Convert color image to ROS message
-            msg_color = self.bridge.cv2_to_imgmsg(color_image, "bgr8")
-            msg_color.header.stamp = self.get_clock().now().to_msg()
-            msg_color.header.frame_id = "camera_color_frame"
-            self.color_publisher.publish(msg_color)
-
-            # Show the processed image with bounding box in an OpenCV window
-            cv2.imshow("Most Green Object Detection", color_image)
-
-        if depth_colormap is not None:
-            # Convert depth image to ROS message
-            msg_depth = self.bridge.cv2_to_imgmsg(depth_image, "mono16")
-            msg_depth.header.stamp = self.get_clock().now().to_msg()
-            msg_depth.header.frame_id = "camera_depth_frame"
-            self.depth_publisher.publish(msg_depth)
-
-            # Show the depth map in a separate OpenCV window
-            cv2.imshow("Depth Map", depth_colormap)
-
-        # Ensure OpenCV windows are updated
+        # Afficher les résultats
+        cv2.imshow("Green Object Detection", color_image)
         cv2.waitKey(1)
 
 
-def process_img(args=None):
+def main(args=None):
     rclpy.init(args=args)
     rs_node = Realsense()
 
-    while rclpy.ok():
-        rs_node.publish_imgs()
-        rs_node.get_logger().info("Publishing images...")
-        rclpy.spin_once(rs_node, timeout_sec=0.001)  # Non-blocking spin to ensure windows update
-
-    # Stop streaming and shutdown node
-    rs_node.pipeline.stop()
-    rs_node.destroy_node()
-    rclpy.shutdown()
+    try:
+        while rclpy.ok():
+            rs_node.process_and_publish()
+            rclpy.spin_once(rs_node, timeout_sec=0.001)
+    finally:
+        rs_node.pipeline.stop()
+        rs_node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':
-    process_img()
+    main()

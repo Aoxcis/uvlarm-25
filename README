@@ -1,1 +1,32 @@
-# TODOs
+<!-- filepath: /home/oth/Documents/ros_space/o2p5/README.md -->
+# Requirements & Installation
+
+Ce projet intègre ROS2, Python, OpenCV et Intel RealSense. Pour le faire fonctionner sur une autre machine, les dépendances suivantes sont nécessaires :
+
+1. **ROS2** (Iron)  
+   Installation via les instructions officielles ROS : [https://docs.ros.org](https://docs.ros.org).
+
+2. **Intel RealSense SDK 2.0**  
+   - Installer `librealsense2-dev` et les outils RealSense.  
+   - Vérifier la détection du matériel avec `realsense-viewer`.
+
+3. **Dependencies Python**  
+   - Python 3  
+   - Numpy (`pip install numpy`)  
+   - OpenCV (`pip install opencv-python`)  
+   - pyrealsense2 (`pip install pyrealsense2`)  
+   - cv_bridge (`sudo apt install ros2-iron-cv-bridge`)  
+
+4. **Compilations et exécutions**  
+   - Cloner ce dépôt dans votre workspace ROS2.  
+   - Depuis la racine du workspace:
+     ```
+     colcon build
+     source install/setup.bash
+     ```
+   - Lancer un script Python, par exemple :
+     ```
+     ros2 run tutorial_pkg test_move
+     ```
+
+Installez les drivers nécessaires pour interpreter les messages spécifique au pibot (bumper, laser etc.)
