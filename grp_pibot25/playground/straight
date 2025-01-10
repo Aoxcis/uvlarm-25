@@ -8,6 +8,7 @@ from geometry_msgs.msg import Twist
 from kobuki_ros_interfaces.msg import BumperEvent  # type: ignore
 from kobuki_ros_interfaces.msg import WheelDropEvent  # type: ignore
 from kobuki_ros_interfaces.msg import ButtonEvent  # type: ignore
+from kobuki_ros_interfaces.msg import Sound  # type: ignore
 import math
 import time
 
@@ -72,6 +73,11 @@ class StraightCtrl:
             ButtonEvent, '/events/button',
             self.button_callback, 10
         )
+        
+        self._pubSound = self.rosNode.create_publisher(
+            Sound, '/commands/sound',
+            10
+        )
 
         self._pubVelocity = self.rosNode.create_publisher(
             Twist, '/multi/cmd_nav', 10
@@ -88,6 +94,7 @@ class StraightCtrl:
 
     def detection_callback(self, msg):
         self._logger.info(f'Detection event received: {msg.data}')
+        self._pubSound.publish(Sound(value=Sound.CLEANINGEND))
 
     def bumper_callback(self, msg):
         self._logger.info(f'Bumper event received: {msg.state}')
@@ -106,6 +113,7 @@ class StraightCtrl:
         if msg.button == 0 and msg.state == 1:
             self.bumped = False
             self._logger.info('Button released, resuming the robot.')
+    
 
     def scan_callback(self, scanMsg):
         # Get angle and range info
