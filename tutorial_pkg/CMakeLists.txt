@@ -23,7 +23,13 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
+
 ament_package()
+
+install(DIRECTORY launch DESTINATION share/${PROJECT_NAME}/)
+install(DIRECTORY config DESTINATION share/${PROJECT_NAME}/)
+
+
 # Python scripts
 install( PROGRAMS playground/test_move DESTINATION lib/${PROJECT_NAME} )
 install( PROGRAMS playground/scan_echo DESTINATION lib/${PROJECT_NAME} )
