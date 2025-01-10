@@ -150,17 +150,17 @@ class StraightCtrl:
                     self.highSpeed = True
 
         # Log obstacle detection
-        if self.obstacle_left and self.obstacle_right:
+        """ if self.obstacle_left and self.obstacle_right:
             self._logger.info('Obstacle detected on both sides!')
         elif self.obstacle_left:
             self._logger.info('Obstacle detected on the left!')
         elif self.obstacle_right:
-            self._logger.info('Obstacle detected on the right!')
+            self._logger.info('Obstacle detected on the right!') """
 
     def control_callback(self):
         # Create a Twist message
         twist = Twist()
-        self._logger.info('Counter at: ' + str(self.counter))
+        # self._logger.info('Counter at: ' + str(self.counter))
 
         if self.highSpeed:
             twist.linear.x = 0.8
