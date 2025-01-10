@@ -163,9 +163,8 @@ class StraightCtrl:
             self.counter = 0
             twist.linear.x = -0.3
             start_time = time.time()  
-            while time.time() - start_time < 2:  
+            while time.time() - start_time < 1:  
                 self._pubVelocity.publish(twist)
-                time.sleep(0.1)  
             twist.linear.x = 0.0
             self._pubVelocity.publish(twist)
 
@@ -173,7 +172,6 @@ class StraightCtrl:
             start_time = time.time()  
             while time.time() - start_time < 2:  
                 self._pubVelocity.publish(twist)
-                time.sleep(0.1)  
             twist.angular.z = 0.0
             self._pubVelocity.publish(twist)
 
