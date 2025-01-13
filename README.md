@@ -10,7 +10,7 @@ Follow the official ROS installation instructions to install ROS2 Iron:
 After installing ROS2 Iron, create your ROS workspace and clone this repository into it.
 
 ```bash
-mkdir -p ~/ros_space/src
+mkdir -p ~/ros_space
 cd ~/ros_space/src
 git clone https://github.com/Aoxcis/uvlarm-25.git
 cd ~/ros_space
@@ -18,17 +18,7 @@ colcon build
 source install/setup.bash
 ```
 
-## 2. Intel RealSense SDK 2.0
-Install the necessary RealSense drivers and tools:
-- Install `librealsense2-dev` and RealSense tools.
-- Verify hardware detection using `realsense-viewer`:
-
-```bash
-sudo apt install librealsense2-dev
-realsense-viewer
-```
-
-## 3. Python Dependencies
+## 2. Python Dependencies
 Ensure you have Python 3 installed. Then, install the following Python packages:
 - Numpy:
   ```bash
@@ -47,7 +37,7 @@ Ensure you have Python 3 installed. Then, install the following Python packages:
   sudo apt install ros-iron-cv-bridge
   ```
 
-## 4. ROS2 Python Dependencies
+## 3. ROS2 Python Dependencies
 Install the necessary ROS2 dependencies:
 - `rclpy` : ROS2 Python client library for writing ROS nodes.
 - `sensor_msgs` : For image data types (`Image`) used in ROS topics.
@@ -60,7 +50,7 @@ Install these dependencies with:
 sudo apt install ros-iron-rclpy ros-iron-sensor-msgs ros-iron-std-msgs ros-iron-cv-bridge
 ```
 
-## 5. Robot-Specific Message Drivers
+## 4. Robot-Specific Message Drivers
 Install drivers to interpret robot-specific messages (bumper, laser, etc.):
 
 ```bash
@@ -70,7 +60,7 @@ colcon build --base-path pkg-interfaces
 source ./install/setup.bash
 ```
 
-## 6. Clone Necessary Repositories
+## 5. Clone Necessary Repositories
 Clone the required repositories into your workspace and build them:
 
 ```bash
@@ -80,7 +70,7 @@ colcon build
 source ./install/setup.bash
 ```
 
-## 7. Gazebo Installation
+## 6. Gazebo Installation
 If you plan to use Gazebo for simulation, you need to install the following Gazebo-related packages:
 
 - **Gazebo**:
@@ -104,8 +94,7 @@ If you plan to use Gazebo for simulation, you need to install the following Gaze
 
 These packages are necessary for integrating Gazebo with ROS2, and for using Gazebo for robot simulation in the project.
 
-## 8. Compilation and Execution
-- Clone this repository into your ROS2 workspace.
+## 7. Compilation and Execution
 - From the root of the workspace, build the project:
 
 ```bash
@@ -113,7 +102,7 @@ colcon build
 source install/setup.bash
 ```
 
-- Launch a Python script, for example:
+- Launch a yaml file, for example:
 
 ```bash
 ros2 launch tutorial_pkg simulation_launch.yaml
