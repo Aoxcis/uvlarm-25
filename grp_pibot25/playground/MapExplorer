@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+import numpy as np
+import rclpy
+from nav_msgs.msg import OccupancyGrid
+from geometry_msgs.msg import Pose
+import tf2_ros
+from tf2_geometry_msgs import do_transform_pose
+
+class MapExplorer:
+    def __init__(self):
+        self.node = rclpy.create_node('map_explorer')
+        # Initialize Transform listener and buffer
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self.node)
+        self.local_frame = 'base_link'  # Set the local frame here, e.g., 'base_link'
+        
+        # Subscribers and publisher
+        self.map_sub = self.node.create_subscription(
+            OccupancyGrid, '/map', self.map_callback, 10)
+        self.costmap_sub = self.node.create_subscription(
+            OccupancyGrid, '/move_base/global_costmap/costmap', self.costmap_callback, 10)
+        self._PubGoal = self.node.create_publisher(Pose, '/goal', 10)
+
+        # Initialize data containers
+        self.map_data = None
+        self.costmap_data = None
+
+        # Timer to periodically publish goals
+        self.node.create_timer(1.0, self.publish_goal)  # Every second
+
+    def map_callback(self, msg):
+        self.map_data = np.array(msg.data).reshape(msg.info.height, msg.info.width)
+        self.node.get_logger().info(f"Received map data: {self.map_data.shape}")
+
+    def costmap_callback(self, msg):
+        self.costmap_data = np.array(msg.data).reshape(msg.info.height, msg.info.width)
+
+    def get_unexplored_frontiers(self):
+        if self.map_data is None:
+            self.node.get_logger().warn("Map data not received yet!")
+            return []
+
+        frontiers = []
+        for i in range(1, self.map_data.shape[0] - 1):
+            for j in range(1, self.map_data.shape[1] - 1):
+                if self.map_data[i, j] == -1:  # Unknown region
+                    # Check neighboring cells for free (0) or occupied (100)
+                    neighbors = [
+                        self.map_data[i-1, j], self.map_data[i+1, j],
+                        self.map_data[i, j-1], self.map_data[i, j+1]
+                    ]
+                    # Ensure that we select frontiers not too close to obstacles (value 100)
+                    if any(n in [100, 0, -1] for n in neighbors):
+                        # Check the costmap for nearby obstacles (value 100 indicates obstacle)
+                        if self.is_safe_frontier(i, j):
+                            frontiers.append((i, j))
+                        else:
+                            self.node.get_logger().info(f"Frontier at ({i}, {j}) is not safe")
+                    else:
+                        self.node.get_logger().info(f"Frontier at ({i}, {j}) has no valid neighbors")
+        self.node.get_logger().info(f"Detected {len(frontiers)} frontiers")
+        return frontiers
+
+    def is_safe_frontier(self, i, j):
+        """Ensure that the frontier is far enough from obstacles."""
+        if self.costmap_data is None:
+            return False
+
+        safe_distance = 3  # Number of cells around the frontier to check
+        for di in range(-safe_distance, safe_distance + 1):
+            for dj in range(-safe_distance, safe_distance + 1):
+                x, y = i + di, j + dj
+                if 0 <= x < self.costmap_data.shape[0] and 0 <= y < self.costmap_data.shape[1]:
+                    if self.costmap_data[x, y] == 100:  # If there's an obstacle
+                        self.node.get_logger().info(f"Frontier at ({i}, {j}) is too close to an obstacle at ({x}, {y})")
+                        return False
+        return True
+
+    def publish_goal(self):
+        # Get an unexplored frontier
+        frontiers = self.get_unexplored_frontiers()
+        if frontiers:
+            goal_x, goal_y = frontiers[0]
+            self.node.get_logger().info(f"Publishing goal at: x={goal_x}, y={goal_y}")
+
+            # Ensure goal_x and goal_y are floats
+            goal_pose = Pose()
+            goal_pose.position.x = float(goal_x)
+            goal_pose.position.y = float(goal_y)
+
+            # Get the current time for transformations
+            current_time = self.node.get_clock().now().to_msg()
+
+            try:
+                # Ensure transform is available and check the buffer
+                stamped_transform = self.tf_buffer.lookup_transform(
+                    self.local_frame, 'map', current_time)
+                # Transform the goal from the global frame (map) to the local frame
+                local_goal = do_transform_pose(goal_pose, stamped_transform)
+
+                # Publish or use the transformed local goal
+                self._PubGoal.publish(local_goal)
+                self.node.get_logger().info(f"Published goal: {local_goal}")
+
+            except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
+                self.node.get_logger().info(f"Transform failed: {e}")
+        else:
+            self.node.get_logger().info("No unexplored frontiers found!")
+
+def main():
+    rclpy.init()
+    map_explorer = MapExplorer()
+
+    # Spin the node to keep it running
+    rclpy.spin(map_explorer.node)
+
+    # Clean up and shutdown
+    map_explorer.node.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()

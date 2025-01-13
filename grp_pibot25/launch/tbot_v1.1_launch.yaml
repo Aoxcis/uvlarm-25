@@ -1,9 +1,6 @@
 launch:
 
 - include:
-    file: "$(find-pkg-share tbot_sim)/launch/challenge-1.launch.py"
-    
-- include:
     file: "/opt/ros/iron/share/slam_toolbox/launch/online_sync_launch.py"
 
 - node:
@@ -11,11 +8,19 @@ launch:
     exec: "rviz2"
     name: "rviz2"
     args: "-d $(find-pkg-share grp_pibot25)/config/config.rviz"
+
+
 - node:
     pkg: "grp_pibot25"
-    exec: "straight_sim_auto"
-    name: "straight_sim_auto"
+    exec: "straight_auto"
+    name: "straight_auto"
+
 - node:
     pkg: "grp_pibot25"
     exec: "MapExplorer"
     name: "MapExplorer"
+
+- node:
+    pkg: "grp_pibot25"
+    exec: "detection_bottle_publisher"
+    name: "detection_bottle_publisher"

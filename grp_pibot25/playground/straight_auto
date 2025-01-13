@@ -96,7 +96,7 @@ class StraightCtrl:
         )
 
         self._pubVelocity = self.rosNode.create_publisher(
-            Twist, '/cmd_vel', 10
+            Twist, '/multi/cmd_nav', 10
         )
 
         self._subToScan = self.rosNode.create_subscription(
