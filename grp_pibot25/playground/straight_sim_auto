@@ -1,0 +1,84 @@
+from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Twist
+import math
+
+class StraightCtrl:
+    def __init__(self, rosNode):
+        # Initialization
+        self.rosNode = rosNode
+        self.goal_pose = Pose()
+        self.goal_pose.position.x = 2.0  # Goal position in X (meters)
+        self.goal_pose.position.y = 0.0  # Goal position in Y (meters)
+        self.goal_pose.orientation.w = 1.0  # No rotation in goal pose (neutral orientation)
+        
+        # Initialize subscribers and publishers
+        self._pubVelocity = self.rosNode.create_publisher(Twist, '/multi/cmd_nav', 10)
+        self._timForCtrl = self.rosNode.create_timer(0.1, self.control_callback)
+    
+    def scan_callback(self, scanMsg):
+        # Get angle and range info from the laser scan
+        angle_min = scanMsg.angle_min
+        angle_max = scanMsg.angle_max
+        angle_increment = scanMsg.angle_increment
+        
+        # Reset the obstacle flags
+        self.obstacle_left = False
+        self.obstacle_right = False
+        self.obstacle_front = False
+        
+        # Iterate over the ranges and classify them based on angle
+        for i, dist in enumerate(scanMsg.ranges):
+            angle = angle_min + i * angle_increment
+            
+            if dist <= 0.0 or dist == float('inf'):
+                continue
+            
+            # Check if there are obstacles close by
+            if -math.pi/3 <= angle <= -math.pi/8:  # Left side
+                if 0.1 < dist < 0.5:
+                    self.obstacle_left = True
+            elif math.pi/8 <= angle <= math.pi/3:  # Right side
+                if 0.1 < dist < 0.5:
+                    self.obstacle_right = True
+            if -math.pi/8 <= angle <= math.pi/8:  # Front side
+                if 0.1 < dist < 0.5:
+                    self.obstacle_front = True
+        
+        if self.obstacle_front:
+            self.rosNode.get_logger().info('Obstacle detected in front!')
+        elif self.obstacle_left:
+            self.rosNode.get_logger().info('Obstacle detected on the left!')
+        elif self.obstacle_right:
+            self.rosNode.get_logger().info('Obstacle detected on the right!')
+
+
+    def control_callback(self):
+        twist = Twist()
+
+        # Check for obstacles before moving
+        if self.obstacle_front:
+            # Stop or navigate around the obstacle
+            twist.linear.x = 0.0
+            twist.angular.z = 1.0  # Rotate in place
+            self._pubVelocity.publish(twist)
+            return
+
+        # If no obstacles, move towards the goal
+        distance = math.sqrt((self.goal_pose.position.x - self.current_position.x)**2 + 
+                            (self.goal_pose.position.y - self.current_position.y)**2)
+        
+        if distance < 0.1:  # Close enough to goal
+            twist.linear.x = 0.0
+            twist.angular.z = 0.0
+        else:
+            twist.linear.x = 0.2  # Forward speed
+            angle_to_goal = math.atan2(self.goal_pose.position.y - self.current_position.y,
+                                    self.goal_pose.position.x - self.current_position.x)
+            twist.angular.z = angle_to_goal  # Rotate to face goal
+            
+        self._pubVelocity.publish(twist)
+
+
+    def update_position(self, current_position):
+        """Update the current position of the robot (could be through odometry)."""
+        self.current_position = current_position
