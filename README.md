@@ -12,7 +12,7 @@ After installing ROS2 Iron, create your ROS workspace and clone this repository 
 ```bash
 mkdir -p ~/ros_space/src
 cd ~/ros_space/src
-git clone <repository-url>
+git clone https://github.com/Aoxcis/uvlarm-25.git
 cd ~/ros_space
 colcon build
 source install/setup.bash
