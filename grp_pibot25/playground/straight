@@ -137,13 +137,130 @@ class StraightCtrl:
             self._logger.info('Button released, resuming the robot.')
 
     def scan_callback(self, scanMsg):
-        # Process scan data to detect obstacles
-        pass
+        # Get angle and range info
+        angle_min = scanMsg.angle_min
+        angle_max = scanMsg.angle_max
+        angle_increment = scanMsg.angle_increment
+        angle_middle = (angle_min + angle_max) / 2
+        
+        # Reset the obstacle flags at the start of each scan
+        self.obstacle_left = False
+        self.obstacle_right = False
+
+        # Iterate over the ranges and classify them based on angle
+        for i, dist in enumerate(scanMsg.ranges):
+            angle = angle_min + i * angle_increment
+
+            # Ignore invalid ranges (e.g., 0.0 or NaN)
+            if dist <= 0.0 or dist == float('inf'):
+                continue
+
+            # Check if the obstacle is within 0.1 meters (10 cm) and on the left or right
+            if -math.pi/2 <= angle <= 0:  # Left side
+                if 0.1 < dist < 0.45:
+                    self.obstacle_right = True
+            elif 0 <= angle <= math.pi/2:  # Right side
+                if 0.1 < dist < 0.45:
+                    self.obstacle_left = True
+            if -math.pi/4 <= angle <= math.pi/4:  # Front side
+                if 0.1 < dist < 0.45:
+                    self.midSpeed = True
+                    self.highSpeed = False
+                else:
+                    self.midSpeed = False
+                    self.highSpeed = True
+
+        # Log obstacle detection
+        """ if self.obstacle_left and self.obstacle_right:
+            self._logger.info('Obstacle detected on both sides!')
+        elif self.obstacle_left:
+            self._logger.info('Obstacle detected on the left!')
+        elif self.obstacle_right:
+            self._logger.info('Obstacle detected on the right!') """
 
     def control_callback(self):
-        # Control logic for the robot
-        pass
+        # Create a Twist message
+        twist = Twist()
+        # self._logger.info('Counter at: ' + str(self.counter))
 
+        if self.highSpeed:
+            twist.linear.x = 0.8
+            twist.angular.z = 0.0
+        elif self.midSpeed:
+            twist.linear.x = 0.5
+            twist.angular.z = 0.0
+
+
+        if self.counter >= 4:
+            self.counter = 0
+            twist.linear.x = -0.3
+            start_time = time.time()  
+            while time.time() - start_time < 1:  
+                self._pubVelocity.publish(twist)
+            twist.linear.x = 0.0
+            self._pubVelocity.publish(twist)
+
+            twist.angular.z = 1.0
+            start_time = time.time()  
+            while time.time() - start_time < 2:  
+                self._pubVelocity.publish(twist)
+            twist.angular.z = 0.0
+            self._pubVelocity.publish(twist)
+
+        if self.bumped:
+            twist.linear.x = 0.0
+            twist.angular.z = 0.0
+        else:
+            # Check for obstacles and set velocities accordingly
+            if not self.obstacle_left and not self.obstacle_right:
+                self.counter = 0
+                # Move forward if no obstacles on either side
+                target_linear_x = self.max_linear_speed  # Target forward speed
+                target_angular_z = 0.0  # No turning
+
+                # Smooth acceleration for linear and angular velocities
+                twist.linear.x = self.accelerate(self.last_linear_x, target_linear_x)
+                twist.angular.z = self.accelerate(self.last_angular_z, target_angular_z)
+
+            elif self.obstacle_left and self.obstacle_right:
+                if not self.turnLeft:
+                    self.counter += 1
+                self.turnRight = False
+                self.turnLeft = True
+                target_linear_x = 0.0
+                target_angular_z = self.max_angular_speed
+
+                twist.linear.x = self.accelerate(self.last_linear_x, target_linear_x)
+                twist.angular.z = self.accelerate(self.last_angular_z, target_angular_z)
+
+            elif self.obstacle_left:
+                if not self.turnRight:
+                    self.counter += 1
+                self.turnRight = True
+                self.turnLeft = False
+                target_linear_x = 0.0
+                target_angular_z = -self.max_angular_speed
+
+                twist.linear.x = self.accelerate(self.last_linear_x, target_linear_x)
+                twist.angular.z = self.accelerate(self.last_angular_z, target_angular_z)
+
+            elif self.obstacle_right:
+                if not self.turnLeft:
+                    self.counter += 1
+                self.turnRight = False
+                self.turnLeft = True
+                target_linear_x = 0.0
+                target_angular_z = self.max_angular_speed
+
+                twist.linear.x = self.accelerate(self.last_linear_x, target_linear_x)
+                twist.angular.z = self.angleAccelerate(self.last_angular_z, target_angular_z)
+
+        # Update the last velocities
+        self.last_linear_x = twist.linear.x
+        self.last_angular_z = twist.angular.z
+
+        # Publish the velocity command
+        self._pubVelocity.publish(twist)
     def accelerate(self, current_value, target_value):
         # Smoothly accelerate or decelerate
         if current_value < target_value:
