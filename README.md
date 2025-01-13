@@ -64,7 +64,7 @@ source ./install/setup.bash
 Clone the required repositories into your workspace and build them:
 
 ```bash
-cd ~/ros_space
+cd $ROS_WORKSPACE
 git clone https://github.com/imt-mobisyst/pkg-tsim
 colcon build
 source ./install/setup.bash
@@ -105,7 +105,7 @@ source install/setup.bash
 - Launch a yaml file, for example:
 
 ```bash
-ros2 launch grp_pibot25 simulation_launch.yaml
+ros2 launch grp_pibot25 simulation_v1_launch.yaml
 ```
 
 ---
