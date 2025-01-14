@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+import rclpy
+from rclpy.node import Node
+import numpy as np
+import math
+import random
+from nav_msgs.msg import OccupancyGrid
+from geometry_msgs.msg import Pose
+from visualization_msgs.msg import Marker, MarkerArray
+
+class TreeNode:
+    def __init__(self, x, y, parent=None):
+        self.x = x
+        self.y = y
+        self.parent = parent
+
+class RRTExplorer(Node):
+    def __init__(self):
+        super().__init__('rrt_explorer')
+        self.map_data = None
+        self.map_resolution = 1.0
+        self.map_origin_x = 0.0
+        self.map_origin_y = 0.0
+        self.safety_radius = 2  # Cells to consider around a point for safety
+        
+        self.map_sub = self.create_subscription(
+            OccupancyGrid, '/map', self.map_callback, 10)
+        self.goal_pub = self.create_publisher(Pose, '/goal', 10)
+        self.marker_pub = self.create_publisher(MarkerArray, '/visualization_markers', 10)
+        self.create_timer(3.0, self.explore)  # Run RRT periodically
+
+    def map_callback(self, msg):
+        self.map_resolution = msg.info.resolution
+        self.map_origin_x = msg.info.origin.position.x
+        self.map_origin_y = msg.info.origin.position.y
+        self.map_data = np.array(msg.data).reshape(msg.info.height, msg.info.width)
+
+    def explore(self):
+        if self.map_data is None:
+            self.get_logger().warn("No map data yet.")
+            return
+
+        # Basic RRT build
+        start = TreeNode(self.map_data.shape[1] // 2, self.map_data.shape[0] // 2)
+        tree = [start]
+        markers = MarkerArray()
+
+        for _ in range(100):  # Expand for a fixed number of iterations
+            rand_x, rand_y = self.sample_free()
+            nearest = self.nearest_node(tree, rand_x, rand_y)
+            new_node = self.steer(nearest, rand_x, rand_y, step_size=5)
+
+            if self.is_free(new_node.x, new_node.y):
+                new_node.parent = nearest
+                tree.append(new_node)
+
+                # Add a marker for visualization
+                markers.markers.append(self.create_marker(new_node))
+
+                # If this new node is near unknown cells, publish goal
+                if self.near_unknown(new_node.x, new_node.y):
+                    if self.validate_goal(new_node):
+                        self.publish_goal(new_node.x, new_node.y)
+                        self.marker_pub.publish(markers)
+                        return
+
+        self.marker_pub.publish(markers)
+
+    def sample_free(self):
+        while True:
+            rx = random.randint(0, self.map_data.shape[1] - 1)
+            ry = random.randint(0, self.map_data.shape[0] - 1)
+            if self.is_free(rx, ry):
+                return rx, ry
+
+    def is_free(self, x, y):
+        if x < 0 or y < 0 or x >= self.map_data.shape[1] or y >= self.map_data.shape[0]:
+            return False
+
+        # Check safety radius
+        for nx in range(x - self.safety_radius, x + self.safety_radius + 1):
+            for ny in range(y - self.safety_radius, y + self.safety_radius + 1):
+                if 0 <= nx < self.map_data.shape[1] and 0 <= ny < self.map_data.shape[0]:
+                    if self.map_data[ny, nx] != 0:
+                        return False
+        return True
+
+    def steer(self, nearest, rand_x, rand_y, step_size=5):
+        dx = rand_x - nearest.x
+        dy = rand_y - nearest.y
+        dist = math.hypot(dx, dy)
+        if dist < step_size:
+            return TreeNode(rand_x, rand_y)
+        theta = math.atan2(dy, dx)
+        new_x = int(nearest.x + step_size * math.cos(theta))
+        new_y = int(nearest.y + step_size * math.sin(theta))
+        return TreeNode(new_x, new_y)
+
+    def nearest_node(self, tree, rx, ry):
+        return min(tree, key=lambda node: (node.x - rx) ** 2 + (node.y - ry) ** 2)
+
+    def near_unknown(self, x, y):
+        for nx in range(x - 2, x + 3):
+            for ny in range(y - 2, y + 3):
+                if (0 <= nx < self.map_data.shape[1] and 0 <= ny < self.map_data.shape[0]):
+                    if self.map_data[ny, nx] == -1:
+                        return True
+        return False
+
+    def validate_goal(self, goal):
+        # Placeholder for goal validation logic (e.g., path-planning)
+        # In a real implementation, integrate with a planner to check if the robot can navigate to the goal
+        return True
+
+    def publish_goal(self, gx, gy):
+        pose = Pose()
+        pose.position.x = self.map_origin_x + gx * self.map_resolution
+        pose.position.y = self.map_origin_y + gy * self.map_resolution
+        self.goal_pub.publish(pose)
+        self.get_logger().info(f"Published RRT goal: {pose.position.x}, {pose.position.y}")
+
+    def create_marker(self, node):
+        marker = Marker()
+        marker.header.frame_id = "map"
+        marker.type = Marker.SPHERE
+        marker.action = Marker.ADD
+        marker.pose.position.x = self.map_origin_x + node.x * self.map_resolution
+        marker.pose.position.y = self.map_origin_y + node.y * self.map_resolution
+        marker.pose.position.z = 0.0
+        marker.scale.x = self.map_resolution
+        marker.scale.y = self.map_resolution
+        marker.scale.z = self.map_resolution
+        marker.color.a = 1.0
+        marker.color.r = 0.0
+        marker.color.g = 1.0
+        marker.color.b = 0.0
+        marker.id = random.randint(0, 1e6)  # Unique ID for each marker
+        return marker
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = RRTExplorer()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
