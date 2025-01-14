@@ -10,10 +10,8 @@ from kobuki_ros_interfaces.msg import WheelDropEvent  # type: ignore
 from kobuki_ros_interfaces.msg import ButtonEvent  # type: ignore
 from kobuki_ros_interfaces.msg import Sound  # type: ignore
 import math
-import time
 import tf2_ros
 from geometry_msgs.msg import TransformStamped
-import random
 
 
 # ROS Node process:
@@ -22,7 +20,7 @@ def main():
     node = Node('basic_move')
 
     # Initialize control class with an initial goal
-    control = StraightCtrl(node, goal_x=5.0, goal_y=5.0)  # Example goal: (5.0, 5.0)
+    control = StraightCtrl(node, goal_x=-1.0, goal_y=-1.0)  # Example goal: (5.0, 5.0)
 
     # Infinite loop for ROS to keep running
     rclpy.spin(node)
@@ -42,11 +40,6 @@ class StraightCtrl:
         self.obstacle_right = False
         self.obstacle_front = False
         self.bumped = False
-        self.highSpeed = False
-        self.midSpeed = False
-        self.counter = 0
-        self.turnRight = False
-        self.turnLeft = False
         self.last_linear_x = 0.0  # Track last linear velocity for smooth transition
         self.last_angular_z = 0.0  # Track last angular velocity for smooth transition
 
@@ -145,7 +138,6 @@ class StraightCtrl:
         angle_min = scanMsg.angle_min
         angle_max = scanMsg.angle_max
         angle_increment = scanMsg.angle_increment
-        angle_middle = (angle_min + angle_max) / 2
         
         # Reset the obstacle flags at the start of each scan
         self.obstacle_left = False
@@ -160,24 +152,16 @@ class StraightCtrl:
             if dist <= 0.0 or dist == float('inf'):
                 continue
 
-            # Check if the obstacle is within 0.1 meters (10 cm) and on the left or right
+            # Check if the obstacle is within 0.5 meters
             if -math.pi/3 <= angle <= -math.pi/8:  # Left side
-                if 0.1 < dist < 0.5:
+                if dist < 0.5:
                     self.obstacle_right = True
             elif math.pi/8 <= angle <= math.pi/3:  # Right side
-                if 0.1 < dist < 0.5:
+                if dist < 0.5:
                     self.obstacle_left = True
             if -math.pi/8 <= angle <= math.pi/8:  # Front side
-                if 0.1 < dist < 0.5:
+                if dist < 0.5:
                     self.obstacle_front = True
-
-        # Log obstacle detection
-        """ if self.obstacle_front:
-            self._logger.info('Obstacle detected on both sides!')
-        elif self.obstacle_left:
-            self._logger.info('Obstacle detected on the left!')
-        elif self.obstacle_right:
-            self._logger.info('Obstacle detected on the right!') """
 
     def control_callback(self):
         # Create a Twist message
@@ -221,7 +205,6 @@ class StraightCtrl:
 
             if distance_to_goal < 0.1:  # Stop when the goal is reached
                 # Goal reached, publish zero velocities and stop
-                self._logger.info('_--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------oal reached!')
                 twist.linear.x = 0.0
                 twist.angular.z = 0.0
                 # After reaching the goal, recheck for the next goal update
@@ -230,8 +213,8 @@ class StraightCtrl:
                 return
         else:
             # Handle obstacle avoidance
-            if self.obstacle_left and self.obstacle_right:
-                twist.linear.x = 0.1
+            if self.obstacle_front:
+                twist.linear.x = 0.0
                 twist.angular.z = self.max_angular_speed  # Turn right
             elif self.obstacle_left:
                 twist.linear.x = 0.1
@@ -246,7 +229,6 @@ class StraightCtrl:
         # Update the last velocities
         self.last_linear_x = twist.linear.x
         self.last_angular_z = twist.angular.z
-
 
     def accelerate(self, current_value, target_value):
         """Smoothly accelerate or decelerate towards the target value."""
