@@ -87,11 +87,8 @@ class Realsense(Node):
             epsilon = 0.04 * cv2.arcLength(contour, True)
             approx = cv2.approxPolyDP(contour, epsilon, True)
 
-            # Apply shape filters
-            if len(approx) > 4:  # More than 4 vertices indicates a rounded shape (possibly bottle)
-                shape_type = "Phantom Ghost"
-            else:  # Fewer vertices indicates a more jagged shape (possibly ghost)
-                shape_type = "Nuka-Cola Bottle"
+            # We don't care about the shape anymore, just use a placeholder name
+            shape_type = "Object"
 
             # Calculate the center and distance to the object
             center_x = x + w // 2
@@ -113,13 +110,17 @@ class Realsense(Node):
         detected_objects = self.detect_objects(color_image, depth_frame)
 
         # Draw bounding boxes and add text
-        for label, x, y, w, h, distance in detected_objects:
+        for idx, (label, x, y, w, h, distance) in enumerate(detected_objects):
+            # Use "Object 1", "Object 2", etc.
+            object_label = f"Object {idx + 1}"
+
+            # Draw the bounding box and label on the image
             cv2.rectangle(color_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            cv2.putText(color_image, f"{label} - {distance:.2f}m", (x, y - 10),
+            cv2.putText(color_image, f"{object_label} - {distance:.2f}m", (x, y - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
             # Publish detection message
-            message = f"{label} detected at ({x}, {y}), Distance: {distance:.2f}m"
+            message = f"{object_label} detected at ({x}, {y}), Distance: {distance:.2f}m"
             self.detection_publisher.publish(String(data=message))
 
         # Publish the color image
