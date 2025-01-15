@@ -149,12 +149,13 @@ class StraightCtrl:
 
     def detection_callback(self, msg):
         # Log the detection event
-        x,y,distance,direction = msg.data.split(',')
+        x, y, distance, direction = msg.data.split(',')
+        distance = float(distance)  # Convert distance to float
         self._logger.info(f'Detection event received at {x} {y} at {distance}')
-        # position = self.current_position.position
-        # angle = self.current_angle
-        # #position objet: 
-        # self.marker_pub.publish(self.create_marker(self, distance*np.sin(angle), distance*np.cos(angle)))
+        position = self.current_position.position
+        angle = self.current_angle
+        #position objet: 
+        self.marker_pub.publish(self.create_marker(self, distance * np.sin(angle), distance * np.cos(angle)))
         # Publish a sound event
         self._pubSound.publish(Sound(value=Sound.CLEANINGEND))
 
