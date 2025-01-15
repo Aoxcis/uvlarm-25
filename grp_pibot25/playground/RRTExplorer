@@ -46,7 +46,7 @@ class RRTExplorer(Node):
         self.marker_pub = self.create_publisher(MarkerArray, '/visualization_markers', 10)
 
         # Run RRT periodically (e.g., every 3s)
-        self.timer_period = 3.0
+        self.timer_period = 5.0
         self.timer = self.create_timer(self.timer_period, self.explore)
 
     def map_callback(self, msg):

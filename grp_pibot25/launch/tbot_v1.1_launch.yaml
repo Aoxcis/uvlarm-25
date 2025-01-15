@@ -17,8 +17,8 @@ launch:
 
 - node:
     pkg: "grp_pibot25"
-    exec: "MapExplorer"
-    name: "MapExplorer"
+    exec: "RRTExplorer"
+    name: "RRTExplorer"
 
 - node:
     pkg: "grp_pibot25"
