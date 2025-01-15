@@ -101,8 +101,7 @@ class Realsense(Node):
             cv2.rectangle(color_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
             cv2.putText(color_image, f"Distance: {distance:.2f}m", (x, y - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-            message = f"Object detected at ({x}, {y}), Distance: {distance:.2f}m, Direction {direction}"
-            self.detection_publisher.publish(String(data=message))
+            self.detection_publisher.publish(String(data=f"[{x}, {y},{distance:.2f}, {direction}]"))
 
         # Publier l'image couleur
         msg_color = self.bridge.cv2_to_imgmsg(color_image, "bgr8")

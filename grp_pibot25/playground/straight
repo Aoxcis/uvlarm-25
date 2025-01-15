@@ -145,12 +145,16 @@ class StraightCtrl:
     def odom_callback(self, msg):
         # Update the current position of the robot from odometry data
         self.current_position = msg.pose.pose
+        self.current_angle = 2 * np.arccos(self.current_position.orientation.w)
 
     def detection_callback(self, msg):
-        position = self.current_position.position
         # Log the detection event
-        self._logger.info(f'Detection event received: {msg.data}')
-        self.marker_pub.publish(self.create_marker(self, position.x, position.y))
+        x,y,distance,direction = msg.data.split(',')
+        self._logger.info(f'Detection event received at {x} {y} at {distance}')
+        position = self.current_position.position
+        angle = self.current_angle
+        #position objet: 
+        self.marker_pub.publish(self.create_marker(self, distance*np.sin(angle), distance*np.cos(angle)))
         
         # Publish a sound event
         self._pubSound.publish(Sound(value=Sound.CLEANINGEND))
