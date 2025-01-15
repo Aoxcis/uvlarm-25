@@ -55,6 +55,8 @@ class StraightCtrl:
         self.acceleration = 0.1  # Rate of acceleration
         self.decceleration = 0.25  # Rate of decceleration
         self.angleAcceleration = 0.3  # Rate of acceleration for angular velocity
+        self.current_position = Pose()  # Initialize current_position
+        self.current_angle = 0.0  # Initialize current_angle
         self.initializeRosNode()
         #intiialize map data
         self.map_data = None
@@ -155,7 +157,7 @@ class StraightCtrl:
         position = self.current_position.position
         angle = self.current_angle
         #position objet: 
-        self.marker_pub.publish(self.create_marker(self, distance * np.sin(angle), distance * np.cos(angle)))
+        self.marker_pub.publish(self.create_marker(position.x + distance * np.sin(angle), position.y + distance * np.cos(angle)))
         # Publish a sound event
         self._pubSound.publish(Sound(value=Sound.CLEANINGEND))
 
