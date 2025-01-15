@@ -38,18 +38,17 @@ class Realsense(Node):
         self.depth_publisher = self.create_publisher(Image, 'camera/depth', 10)
         self.detection_publisher = self.create_publisher(String, 'detection', 10)
 
-        # Initialize background subtractor for motion detection
-        self.fgbg = cv2.createBackgroundSubtractorMOG2()
-
-        # Memory to store previously detected objects by ID
-        self.detected_memory = {}
-        self.next_object_id = 1  # Unique ID for each detected object
-
         # Load template images for template matching (you need to provide the actual templates)
         self.templates = {
             "Phantom Ghost": cv2.imread("phantom_ghost_template.png", cv2.IMREAD_GRAYSCALE),
             "Nuka-Cola Bottle": cv2.imread("nuka_cola_bottle_template.png", cv2.IMREAD_GRAYSCALE)
         }
+
+        # Check if the templates are loaded correctly
+        for label, template in self.templates.items():
+            if template is None:
+                self.get_logger().error(f"Template for {label} failed to load. Check the file path.")
+                continue
 
     def read_and_process_frames(self):
         frames = self.pipeline.wait_for_frames()
@@ -121,6 +120,11 @@ class Realsense(Node):
 
         # Iterate over all the templates and try to match them
         for label, template in self.templates.items():
+            # Ensure the template size is not larger than the image
+            if template.shape[0] > gray_image.shape[0] or template.shape[1] > gray_image.shape[1]:
+                self.get_logger().warn(f"Template size is larger than the image size for {label}. Skipping template matching.")
+                continue
+
             res = cv2.matchTemplate(gray_image, template, cv2.TM_CCOEFF_NORMED)
             threshold = 0.8  # You can adjust this threshold
             loc = np.where(res >= threshold)
@@ -138,35 +142,11 @@ class Realsense(Node):
 
         return detected_objects
 
-    def store_or_recognize_object(self, detected_objects):
-        for label, x, y, w, h, distance, center_x, center_y in detected_objects:
-            recognized = False
-
-            # Try to match the detected object with previously stored ones
-            for obj_id, obj_data in self.detected_memory.items():
-                prev_label, prev_center_x, prev_center_y = obj_data
-
-                # If the object is close enough to a previous detection, consider it the same object
-                if abs(center_x - prev_center_x) < 50 and abs(center_y - prev_center_y) < 50:
-                    recognized = True
-                    self.get_logger().info(f"Recognized {label} as {prev_label} with ID {obj_id}.")
-                    break
-
-            # If not recognized, store it as a new object
-            if not recognized:
-                obj_id = self.next_object_id
-                self.detected_memory[obj_id] = (label, center_x, center_y)
-                self.get_logger().info(f"New {label} detected and stored with ID {obj_id}.")
-                self.next_object_id += 1
-
-            # Publish detection message with object ID
-            message = f"{label} (ID {obj_id}) detected at ({x}, {y}), Distance: {distance:.2f}m"
-            self.detection_publisher.publish(String(data=message))
-
     def process_and_publish(self):
         color_image, depth_image, depth_frame = self.read_and_process_frames()
 
         if color_image is None:
+            self.get_logger().warn("No image received. Skipping this loop iteration.")
             return
 
         # Detect objects using contours first
@@ -176,16 +156,18 @@ class Realsense(Node):
         if not detected_objects:
             detected_objects = self.detect_objects_template(color_image, depth_frame)
 
-        # Store or recognize objects from memory
-        self.store_or_recognize_object(detected_objects)
+        # If no objects detected after both methods, log a warning
+        if not detected_objects:
+            self.get_logger().warn("No objects detected using contour or template matching.")
+            return
 
-        # Draw bounding boxes and add text with object ID
+        # Draw bounding boxes and add text with object label
         for label, x, y, w, h, distance, _, _ in detected_objects:
             # Draw the bounding box
             cv2.rectangle(color_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-            # Add text (e.g., label with ID and distance) above the bounding box
-            message = f"{label} - ID {self.next_object_id - 1} - {distance:.2f}m"
+            # Add text (e.g., label and distance) above the bounding box
+            message = f"{label} - {distance:.2f}m"
             cv2.putText(color_image, message, (x, y - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
