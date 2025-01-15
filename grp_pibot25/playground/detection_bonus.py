@@ -72,8 +72,8 @@ class Realsense(Node):
         hsv_image = cv2.cvtColor(color_image, cv2.COLOR_BGR2HSV)
 
         # Mask for detecting green objects
-        lower_green = np.array([40, 80, 40])  # Lower bound for green
-        upper_green = np.array([75, 255, 255])  # Upper bound for green
+        lower_green = np.array([30, 60, 40])  # Lower bound for green (slightly lower)
+        upper_green = np.array([80, 255, 255])  # Upper bound for green (slightly higher)
         green_mask = cv2.inRange(hsv_image, lower_green, upper_green)
 
         # Clean the mask using morphological operations

@@ -2,247 +2,188 @@
 
 import math
 import sys
-import heapq
-from collections import deque
+import numpy as np
 
 import rclpy
 from rclpy.node import Node
 
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import Pose, Twist
+from sensor_msgs.msg import LaserScan
 from kobuki_ros_interfaces.msg import BumperEvent, WheelDropEvent, ButtonEvent, Sound
 
 import tf2_ros
-from geometry_msgs.msg import TransformStamped
-
-
-def main(args=None):
-    rclpy.init(args=args)
-    node = AStarNavigator()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
-
 
 class AStarNavigator(Node):
     def __init__(self):
         super().__init__('a_star_navigator')
 
-        # -------------------------
-        #   Map / Cost Data
-        # -------------------------
+        # ---------------------------------------------------------------------
+        #  Map Data
+        # ---------------------------------------------------------------------
         self.map_data = None
         self.map_width = 0
         self.map_height = 0
-        self.map_resolution = 0.05  # will be updated
-        self.map_origin_x = 0.0     # will be updated
-        self.map_origin_y = 0.0     # will be updated
+        self.map_resolution = 0.05
+        self.map_origin_x = 0.0
+        self.map_origin_y = 0.0
+        self.occupied_thresh = 50
 
-        # A* parameters
-        self.occupied_thresh = 50    # Occupancy >= 50 => considered blocked
-        self.motion_8 = True         # Use 8 directions (diagonal moves) or just 4
-
-        # -------------------------
-        #   Robot State
-        # -------------------------
-        self.path = []       # will hold (wx, wy) in world coords
-        self.current_path_i = 0
+        # ---------------------------------------------------------------------
+        #  Robot / Goal State
+        # ---------------------------------------------------------------------
+        self.goal_x = None
+        self.goal_y = None
         self.bumped = False
 
-        # -------------------------
-        #   Movement Tuning
-        # -------------------------
-        self.max_lin_speed = 0.3
-        self.max_ang_speed = 1.5
-        self.lin_accel = 0.1
-        self.ang_accel = 0.5
+        # ---------------------------------------------------------------------
+        #  Movement Tuning
+        # ---------------------------------------------------------------------
+        self.max_lin_speed = 0.3         # (m/s)
+        self.max_ang_speed = 1.5         # (rad/s)
+        self.lin_accel = 0.1             # (m/s^2)
+        self.ang_accel = 0.5             # (rad/s^2)
+
         self.last_lin_speed = 0.0
         self.last_ang_speed = 0.0
 
-        # If we are within this distance of a path waypoint, move to the next
-        self.waypoint_reached_dist = 0.1
-
-        # If we are within this distance of the final goal, we consider it done
+        # Stop if we're within this distance of the goal
         self.goal_reached_dist = 0.1
 
-        # -------------------------
-        #   ROS Setup
-        # -------------------------
+        # If heading error is larger than this, we reduce forward speed
+        self.large_angle_threshold = math.radians(20)
+
+        # ---------------------------------------------------------------------
+        #  ROS Setup
+        # ---------------------------------------------------------------------
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         # Subscriptions
-        self.create_subscription(OccupancyGrid, '/map', self.map_callback, 10)
-        self.create_subscription(Pose, '/goal', self.goal_callback, 10)
+        self.map_sub = self.create_subscription(
+            OccupancyGrid, '/map', self.map_callback, 10
+        )
+        self.goal_sub = self.create_subscription(
+            Pose, '/goal', self.goal_callback, 10
+        )
 
-        # (Optional) Bumper & button events
-        self.create_subscription(BumperEvent, '/events/bumper', self.bumper_callback, 10)
-        self.create_subscription(WheelDropEvent, '/events/wheel_drop', self.wheeldrop_callback, 10)
-        self.create_subscription(ButtonEvent, '/events/button', self.button_callback, 10)
+        self.bumper_sub = self.create_subscription(
+            BumperEvent, '/events/bumper', self.bumper_callback, 10
+        )
+        self.wheeldrop_sub = self.create_subscription(
+            WheelDropEvent, '/events/wheel_drop', self.wheeldrop_callback, 10
+        )
+        self.button_sub = self.create_subscription(
+            ButtonEvent, '/events/button', self.button_callback, 10
+        )
 
         # Publisher for velocity commands
         self.cmd_pub = self.create_publisher(Twist, '/multi/cmd_nav', 10)
-        
-        # (Optional) Sound feedback
+
+        # (Optional) Sound
         self.sound_pub = self.create_publisher(Sound, '/commands/sound', 10)
 
-        # Timer for control loop
+        # Control loop timer
         self.timer = self.create_timer(0.1, self.control_loop)
 
         self.get_logger().info("AStarNavigator node initialized.")
 
-    # ----------------------------------------------------------------------------
-    #   Map & Goal Callbacks
-    # ----------------------------------------------------------------------------
-
+    # --------------------------------------------------------------------------
+    #    Map & Goal Callbacks
+    # --------------------------------------------------------------------------
     def map_callback(self, msg: OccupancyGrid):
-        """Store map data for A* planning."""
+        """ Store map data for potential collision or debugging. """
+        # Convert to 2D array
+        arr = np.array(msg.data, dtype=np.int8)
+        self.map_data = arr.reshape(msg.info.height, msg.info.width)
         self.map_width = msg.info.width
         self.map_height = msg.info.height
         self.map_resolution = msg.info.resolution
         self.map_origin_x = msg.info.origin.position.x
         self.map_origin_y = msg.info.origin.position.y
-
-        # Convert 1D occupancy data to 2D numpy array (row-major)
-        self.map_data = list(msg.data)  # or np.array(...)
-        self.get_logger().info("Map received: size = {}x{}, res={:.3f}".format(
-            self.map_width, self.map_height, self.map_resolution))
+        self.get_logger().info(f"Map received: size={self.map_width}x{self.map_height}, res={self.map_resolution:.3f}")
 
     def goal_callback(self, msg: Pose):
-        """
-        On receiving a new goal, run A* from the robot's current
-        position to the requested goal in map coordinates.
-        """
-        if self.map_data is None:
-            self.get_logger().warn("No map available yet, cannot plan.")
-            return
+        """Called when a new goal is published (from RRTExplorer)."""
+        self.goal_x = msg.position.x
+        self.goal_y = msg.position.y
+        self.get_logger().info(f"New goal received: x={self.goal_x:.2f}, y={self.goal_y:.2f}")
 
-        # Get robot current pose in world coords
-        try:
-            transform = self.tf_buffer.lookup_transform('odom', 'base_link', rclpy.time.Time())
-            rx = transform.transform.translation.x
-            ry = transform.transform.translation.y
-        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
-            self.get_logger().warn(f"TF transform error: {str(e)}")
-            return
-
-        # Convert robot pose and goal from world coords -> map grid coords
-        start_cell = self.world_to_map(rx, ry)
-        goal_cell  = self.world_to_map(msg.position.x, msg.position.y)
-
-        self.get_logger().info(f"Planning from cell {start_cell} to {goal_cell}")
-
-        path_cells = self.a_star(start_cell, goal_cell)
-
-        if not path_cells:
-            self.get_logger().warn("No path found by A*.")
-            # (Optional) beep or something
-            return
-
-        # Convert path in grid cells to world coords
-        self.path = [self.map_to_world(cx, cy) for cx, cy in path_cells]
-        self.current_path_i = 0
-
-        self.get_logger().info(f"A* path of length {len(self.path)} found. Starting navigation.")
-
-    # ----------------------------------------------------------------------------
-    #   Bumper, WheelDrop, Button Callbacks
-    # ----------------------------------------------------------------------------
-
-    def bumper_callback(self, msg: BumperEvent):
-        if msg.state == 1:
-            self.get_logger().info("Bumper pressed -> Stop.")
-            self.bumped = True
-        else:
-            self.get_logger().info("Bumper released -> Resume.")
-            self.bumped = False
-
-    def wheeldrop_callback(self, msg: WheelDropEvent):
-        if msg.state == 1:
-            self.get_logger().info("WheelDrop detected -> Stop.")
-            self.bumped = True
-        else:
-            self.bumped = False
-
-    def button_callback(self, msg: ButtonEvent):
-        # For demonstration, if user presses button 0, toggle bump
-        if msg.button == 0 and msg.state == 1:
-            self.bumped = not self.bumped
-            if self.bumped:
-                self.get_logger().info("Button pressed -> Robot Paused.")
-            else:
-                self.get_logger().info("Button pressed -> Robot Resumed.")
-
-    # ----------------------------------------------------------------------------
-    #   Control Loop
-    # ----------------------------------------------------------------------------
-
+    # --------------------------------------------------------------------------
+    #    Control Loop
+    # --------------------------------------------------------------------------
     def control_loop(self):
-        """Periodically move along the A* path if we have one."""
-        twist = Twist()
+        """ Periodic control loop that moves the robot toward the current goal. """
+        # If no goal is set, do nothing
+        if self.goal_x is None or self.goal_y is None:
+            return
 
-        # If bumped, zero velocity
+        # If bumper/wheel dropped, freeze
         if self.bumped:
-            self.cmd_pub.publish(twist)
+            self.stop_robot()
             return
 
-        # If no path is set or we've reached the end, do nothing
-        if not self.path or self.current_path_i >= len(self.path):
-            self.cmd_pub.publish(twist)
-            return
-
-        # Get current robot pose
+        # Get the robot's current position in map frame
         try:
-            transform = self.tf_buffer.lookup_transform('odom', 'base_link', rclpy.time.Time())
-            rx = transform.transform.translation.x
-            ry = transform.transform.translation.y
-            rtheta = self.yaw_from_quaternion(transform.transform.rotation)
-        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
-            self.get_logger().warn(f"TF transform error: {str(e)}")
+            transform = self.tf_buffer.lookup_transform(
+                'map', 'base_link', rclpy.time.Time()
+            )
+        except (tf2_ros.LookupException, 
+                tf2_ros.ConnectivityException,
+                tf2_ros.ExtrapolationException) as e:
+            self.get_logger().warn("Error getting transform: " + str(e))
             return
 
-        # Check if we're close to the final goal
-        final_goal_x, final_goal_y = self.path[-1]
-        dist_to_goal = math.hypot(final_goal_x - rx, final_goal_y - ry)
+        robot_x = transform.transform.translation.x
+        robot_y = transform.transform.translation.y
+        robot_yaw = self.get_yaw_from_quaternion(transform.transform.rotation)
+
+        # Check distance to goal
+        dx = self.goal_x - robot_x
+        dy = self.goal_y - robot_y
+        dist_to_goal = math.hypot(dx, dy)
+
         if dist_to_goal < self.goal_reached_dist:
-            self.get_logger().info("Goal reached! Stopping.")
-            self.path = []
-            self.current_path_i = 0
-            self.cmd_pub.publish(twist)
+            # Goal reached!
+            self.get_logger().info("Goal reached! Stopping the robot.")
+            self.goal_x = None
+            self.goal_y = None
+            self.stop_robot()
             return
 
-        # Otherwise, move toward the current waypoint
-        waypoint_x, waypoint_y = self.path[self.current_path_i]
-        dx = waypoint_x - rx
-        dy = waypoint_y - ry
-        dist_wp = math.hypot(dx, dy)
+        # Compute heading
+        desired_yaw = math.atan2(dy, dx)
+        yaw_error = self.normalize_angle(desired_yaw - robot_yaw)
 
-        # If we’re close enough to this waypoint, move to the next
-        if dist_wp < self.waypoint_reached_dist:
-            self.current_path_i += 1
-            # If that was the last waypoint, we’ll stop next loop
-            twist.linear.x = 0.0
-            twist.angular.z = 0.0
-            self.cmd_pub.publish(twist)
-            return
-
-        # Compute desired heading
-        desired_angle = math.atan2(dy, dx)
-        angle_error = self.normalize_angle(desired_angle - rtheta)
-
-        # Simple proportional turn
-        # You could do more advanced control if you like
-        Kp_ang = 1.0  # Proportional gain for angular
-        target_ang_vel = Kp_ang * angle_error
+        # ---------------------------
+        #   Movement Logic
+        # ---------------------------
+        # 1) Determine target angular velocity based on yaw_error
+        #    - saturate at max_ang_speed
+        #    - sign depends on direction of the error
+        #    - for smaller yaw errors, smaller angular velocity
+        Kp_yaw = 1.0
+        target_ang_vel = Kp_yaw * yaw_error
         target_ang_vel = max(-self.max_ang_speed, min(self.max_ang_speed, target_ang_vel))
+
+        # 2) Determine target linear velocity
+        #    - If yaw_error is large (e.g. > 20 deg), turn in place by setting linear speed near 0
+        #    - Otherwise, move forward up to max_lin_speed
+        angle_threshold = self.large_angle_threshold  # e.g., 20 deg
+        if abs(yaw_error) > angle_threshold:
+            # Big yaw error => rotate in place
+            target_lin_vel = 0.0
+        else:
+            # Go forward, possibly scale speed by distance or error
+            # Example: linear speed is min of (dist_to_goal, max_lin_speed)
+            target_lin_vel = min(dist_to_goal, self.max_lin_speed)
+
+        # 3) Accelerate or decelerate to those targets
+        lin_vel = self.accelerate_linear(self.last_lin_speed, target_lin_vel)
         ang_vel = self.accelerate_angular(self.last_ang_speed, target_ang_vel)
 
-        # Reduce forward speed if the heading error is large
-        heading_factor = max(0.0, 1.0 - abs(angle_error) / math.pi)
-        target_lin_vel = self.max_lin_speed * heading_factor
-        lin_vel = self.accelerate_linear(self.last_lin_speed, target_lin_vel)
-
-        # Publish
+        # Publish Twist
+        twist = Twist()
         twist.linear.x = lin_vel
         twist.angular.z = ang_vel
         self.cmd_pub.publish(twist)
@@ -251,136 +192,27 @@ class AStarNavigator(Node):
         self.last_lin_speed = lin_vel
         self.last_ang_speed = ang_vel
 
-    # ----------------------------------------------------------------------------
-    #   A* Implementation
-    # ----------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
+    #    Helpers
+    # --------------------------------------------------------------------------
 
-    def a_star(self, start, goal):
-        """
-        Perform A* on the occupancy grid.
-        start, goal: (x, y) in map-cell coordinates (integers).
-        Returns a list of cells from start to goal (including both) if found,
-        or None/empty if no path.
-        """
+    def stop_robot(self):
+        """Stop the robot by sending zero velocities."""
+        self.last_lin_speed = 0.0
+        self.last_ang_speed = 0.0
+        twist = Twist()
+        self.cmd_pub.publish(twist)
 
-        # Quick boundary check
-        if not self.in_bounds(start[0], start[1]) or not self.in_bounds(goal[0], goal[1]):
-            self.get_logger().warn("Start or Goal out of map bounds!")
-            return []
-
-        if not self.is_free(*start) or not self.is_free(*goal):
-            self.get_logger().warn("Start or Goal in occupied cell!")
-            return []
-
-        # Min-heap for frontier
-        frontier = []
-        heapq.heappush(frontier, (0, start))
-        came_from = {start: None}
-        cost_so_far = {start: 0}
-
-        while frontier:
-            _, current = heapq.heappop(frontier)
-            if current == goal:
-                # Reconstruct path
-                return self.reconstruct_path(came_from, start, goal)
-
-            for nx, ny in self.get_neighbors(current):
-                if not self.is_free(nx, ny):
-                    continue
-
-                new_cost = cost_so_far[current] + self.cost_to_move(current, (nx, ny))
-                if (nx, ny) not in cost_so_far or new_cost < cost_so_far[(nx, ny)]:
-                    cost_so_far[(nx, ny)] = new_cost
-                    priority = new_cost + self.heuristic((nx, ny), goal)
-                    came_from[(nx, ny)] = current
-                    heapq.heappush(frontier, (priority, (nx, ny)))
-
-        # No path found
-        return []
-
-    def reconstruct_path(self, came_from, start, goal):
-        """Rebuild path (list of (x,y) cells) by working backwards from goal."""
-        path = []
-        current = goal
-        while current is not None:
-            path.append(current)
-            current = came_from[current]
-        path.reverse()
-        return path
-
-    def get_neighbors(self, cell):
-        """Return valid neighboring cells (4 or 8 directions)."""
-        (x, y) = cell
-        # For 4-direction
-        directions_4 = [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]
-        # For diagonals
-        directions_diag = [(x+1, y+1), (x-1, y+1), (x+1, y-1), (x-1, y-1)]
-
-        if self.motion_8:
-            neighbors = directions_4 + directions_diag
-        else:
-            neighbors = directions_4
-
-        # Filter out-of-bounds
-        valid = [(nx, ny) for (nx, ny) in neighbors if self.in_bounds(nx, ny)]
-        return valid
-
-    def cost_to_move(self, current, nxt):
-        """Cost of moving from one cell to another. Diagonal is slightly higher."""
-        (x1, y1) = current
-        (x2, y2) = nxt
-        # Euclidean distance in grid cells
-        dist = math.hypot(x2 - x1, y2 - y1)
-        return dist
-
-    def heuristic(self, c1, c2):
-        """Heuristic for A*: Euclidean distance (or Manhattan if 4-dir)."""
-        (x1, y1) = c1
-        (x2, y2) = c2
-        return math.hypot(x2 - x1, y2 - y1)
-
-    # ----------------------------------------------------------------------------
-    #   Occupancy & Coordinates
-    # ----------------------------------------------------------------------------
-
-    def in_bounds(self, x, y):
-        return 0 <= x < self.map_width and 0 <= y < self.map_height
-
-    def is_free(self, x, y):
-        """Check if the cell is below the occupancy threshold."""
-        idx = y * self.map_width + x
-        if 0 <= idx < len(self.map_data):
-            return self.map_data[idx] < self.occupied_thresh
-        return False
-
-    def world_to_map(self, wx, wy):
-        """Convert world coordinates to map cell indices (int)."""
-        mx = int((wx - self.map_origin_x) / self.map_resolution)
-        my = int((wy - self.map_origin_y) / self.map_resolution)
-        return (mx, my)
-
-    def map_to_world(self, mx, my):
-        """Convert map cell indices to world coordinates (float)."""
-        wx = self.map_origin_x + (mx + 0.5) * self.map_resolution
-        wy = self.map_origin_y + (my + 0.5) * self.map_resolution
-        return (wx, wy)
-
-    # ----------------------------------------------------------------------------
-    #   Motion Helpers
-    # ----------------------------------------------------------------------------
-
-    def accelerate_linear(self, current_v, target_v):
-        """Simple approach to ramp speed up/down."""
-        if current_v < target_v:
-            return min(current_v + self.lin_accel, target_v)
-        else:
-            return max(current_v - self.lin_accel, target_v)
-
-    def accelerate_angular(self, current_w, target_w):
-        if current_w < target_w:
-            return min(current_w + self.ang_accel, target_w)
-        else:
-            return max(current_w - self.ang_accel, target_w)
+    def get_yaw_from_quaternion(self, q):
+        """Compute yaw from a quaternion."""
+        x = q.x
+        y = q.y
+        z = q.z
+        w = q.w
+        siny_cosp = 2.0 * (w * z + x * y)
+        cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
+        yaw = math.atan2(siny_cosp, cosy_cosp)
+        return yaw
 
     def normalize_angle(self, angle):
         """Normalize angle to [-pi, pi]."""
@@ -390,20 +222,58 @@ class AStarNavigator(Node):
             angle += 2.0 * math.pi
         return angle
 
-    def yaw_from_quaternion(self, q):
-        """Extract yaw from quaternion."""
-        # Roll/pitch/yaw
-        x = q.x
-        y = q.y
-        z = q.z
-        w = q.w
+    def accelerate_linear(self, current_v, target_v):
+        """Smoothly accelerate/decelerate the linear velocity."""
+        if current_v < target_v:
+            return min(current_v + self.lin_accel, target_v)
+        else:
+            return max(current_v - self.lin_accel, target_v)
 
-        # Yaw (around Z axis)
-        siny_cosp = 2.0 * (w * z + x * y)
-        cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
-        yaw = math.atan2(siny_cosp, cosy_cosp)
-        return yaw
+    def accelerate_angular(self, current_w, target_w):
+        """Smoothly accelerate/decelerate the angular velocity."""
+        if current_w < target_w:
+            return min(current_w + self.ang_accel, target_w)
+        else:
+            return max(current_w - self.ang_accel, target_w)
 
+    # --------------------------------------------------------------------------
+    #    Bumper & Button Callbacks
+    # --------------------------------------------------------------------------
+    def bumper_callback(self, msg: BumperEvent):
+        """Stop if bumper is pressed."""
+        if msg.state == BumperEvent.PRESSED:
+            self.bumped = True
+            self.get_logger().info("Bumper pressed -> Robot paused.")
+        else:
+            self.bumped = False
+            self.get_logger().info("Bumper released -> Robot resumed.")
+
+    def wheeldrop_callback(self, msg: WheelDropEvent):
+        """Stop if wheel is dropped."""
+        if msg.state == WheelDropEvent.DROPPED:
+            self.bumped = True
+            self.get_logger().info("Wheel dropped -> Robot paused.")
+        else:
+            self.bumped = False
+            self.get_logger().info("Wheel restored -> Robot resumed.")
+
+    def button_callback(self, msg: ButtonEvent):
+        """
+        Example button logic.
+        If you want the button to toggle movement, for instance:
+        """
+        if msg.state == ButtonEvent.PRESSED:
+            # Toggle bumped
+            self.bumped = not self.bumped
+            self.get_logger().info(f"Button pressed -> bumped={self.bumped}")
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = AStarNavigator()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
