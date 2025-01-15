@@ -63,7 +63,7 @@ class StraightCtrl:
         self.count_objects = 0
     def initializeRosNode(self):
         # Initialize subscribers and publishers
-        self.map_sub = self.create_subscription(
+        self.map_sub = self.rosNode.create_subscription(
             OccupancyGrid, '/map', self.map_callback, 10)
 
         self._subToDetection = self.rosNode.create_subscription(
@@ -99,7 +99,7 @@ class StraightCtrl:
             10
         )
 
-        self.marker_pub = self.create_publisher(
+        self.marker_pub = self.rosNode.create_publisher(
             MarkerArray, '/visualization_markers', 10
         )
 
