@@ -12,9 +12,10 @@ from kobuki_ros_interfaces.msg import WheelDropEvent  # type: ignore
 from kobuki_ros_interfaces.msg import ButtonEvent  # type: ignore
 from kobuki_ros_interfaces.msg import Sound  # type: ignore
 from geometry_msgs.msg import Pose
+from nav_msgs.msg import OccupancyGrid
+from visualization_msgs.msg import Marker, MarkerArray
 import math
 import time
-
 
 # ROS Node process:
 def main():
@@ -48,16 +49,24 @@ class StraightCtrl:
         self.turnLeft = False
         self.last_linear_x = 0.0  # Track last linear velocity for smooth transition
         self.last_angular_z = 0.0  # Track last angular velocity for smooth transition
-
+        self.marker_pub = self.create_publisher(MarkerArray, '/visualization_markers', 10)
         self.max_linear_speed = 0.8  # Max forward speed (m/s)
         self.max_angular_speed = 2.0  # Max angular speed (rad/s)
         self.acceleration = 0.1  # Rate of acceleration
         self.decceleration = 0.25  # Rate of decceleration
         self.angleAcceleration = 0.3  # Rate of acceleration for angular velocity
         self.initializeRosNode()
-
+        #intiialize map data
+        self.map_data = None
+        self.map_resolution = 1.0
+        self.map_origin_x = 0.0
+        self.map_origin_y = 0.0
+        self.count_objects = 0
     def initializeRosNode(self):
         # Initialize subscribers and publishers
+        self.map_sub = self.create_subscription(
+            OccupancyGrid, '/map', self.map_callback, 10)
+
         self._subToDetection = self.rosNode.create_subscription(
             String, '/detection',
             self.detection_callback, 10
@@ -104,21 +113,43 @@ class StraightCtrl:
             0.1, self.control_callback  # Increased time for smoother updates
         )
 
+    def map_callback(self, msg):
+        self.map_resolution = msg.info.resolution
+        self.map_origin_x = msg.info.origin.position.x
+        self.map_origin_y = msg.info.origin.position.y
+        self.map_data = np.array(msg.data).reshape(msg.info.height, msg.info.width)
+    
+    def create_marker(self, node, x, y):
+        marker = Marker()
+        marker.header.frame_id = "map"
+        marker.type = Marker.SPHERE
+        marker.action = Marker.ADD
+        marker.pose.position.x = self.map_origin_x + x * self.map_resolution
+        marker.pose.position.y = self.map_origin_y + y * self.map_resolution
+        marker.pose.position.z = 0.0
+        marker.scale.x = self.map_resolution
+        marker.scale.y = self.map_resolution
+        marker.scale.z = self.map_resolution
+        marker.color.a = 1.0
+        marker.color.r = 1.0
+        marker.color.g = 0.0
+        marker.color.b = 0.0
+        marker.id = self.count_objects  # Unique ID for each marker
+        self.count_objects+=1
+        return marker
+    
     def odom_callback(self, msg):
         # Update the current position of the robot from odometry data
         self.current_position = msg.pose.pose
 
     def detection_callback(self, msg):
+        position = self.current_position.position
         # Log the detection event
         self._logger.info(f'Detection event received: {msg.data}')
+        self.marker_pub.publish(create_marker(self, position.x, position.y ))
         
         # Publish a sound event
         self._pubSound.publish(Sound(value=Sound.CLEANINGEND))
-        
-        # Log the current position of the robot
-        position = self.current_position.position
-        self._logger.info(f'Current position: x={position.x:.2f}, y={position.y:.2f}, z={position.z:.2f}')
-
     def bumper_callback(self, msg):
         self._logger.info(f'Bumper event received: {msg.state}')
         if msg.state == 1:
@@ -275,6 +306,7 @@ class StraightCtrl:
         elif current_value > target_value:
             return max(current_value - self.angleAcceleration, target_value)
         return current_value
+
 
 # Go:
 if __name__ == '__main__':
