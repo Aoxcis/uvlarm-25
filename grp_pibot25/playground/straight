@@ -55,8 +55,6 @@ class StraightCtrl:
         self.acceleration = 0.1  # Rate of acceleration
         self.decceleration = 0.25  # Rate of decceleration
         self.angleAcceleration = 0.3  # Rate of acceleration for angular velocity
-        self.current_position = Pose()  # Initialize current_position
-        self.current_angle = 0.0  # Initialize current_angle
         self.initializeRosNode()
         #intiialize map data
         self.map_data = None
@@ -151,16 +149,15 @@ class StraightCtrl:
 
     def detection_callback(self, msg):
         # Log the detection event
-        x, y, distance, direction = msg.data.split(',')
-        distance = float(distance)  # Convert distance to float
+        x,y,distance,direction = msg.data.split(',')
         self._logger.info(f'Detection event received at {x} {y} at {distance}')
         position = self.current_position.position
         angle = self.current_angle
         #position objet: 
-        self.marker_pub.publish(self.create_marker(position.x + distance * np.sin(angle), position.y + distance * np.cos(angle)))
+        self.marker_pub.publish(self.create_marker(self, distance*np.sin(angle), distance*np.cos(angle)))
         # Publish a sound event
         self._pubSound.publish(Sound(value=Sound.CLEANINGEND))
-
+        
     def bumper_callback(self, msg):
         self._logger.info(f'Bumper event received: {msg.state}')
         if msg.state == 1:
