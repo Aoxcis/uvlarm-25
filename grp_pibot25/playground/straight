@@ -171,10 +171,11 @@ class StraightCtrl:
         angle = self.current_angle
         #position objet: 
         marker, text_marker = self.create_marker(self, position.x + distance * np.cos(angle), position.y + distance * np.sin(angle), str(self.object_counter),(1.0, 0.0, 0.0))
-        robot_marker = self.create_marker(self, position.x, position.y, 'Robot', (0.0, 1.0, 0.0))
+        robot_marker, robot_text_marker = self.create_marker(self, position.x, position.y, '', (0.0, 1.0, 0.0))
         self.marker_pub.publish(marker)
         self.marker_pub.publish(text_marker)
         self.marker_pub.publish(robot_marker)
+        self.marker_pub.publish(robot_text_marker)
         self.object_counter += 1
         # Publish a sound event
         self._pubSound.publish(Sound(value=Sound.CLEANINGEND))
