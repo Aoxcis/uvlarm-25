@@ -152,7 +152,7 @@ class StraightCtrl:
         position = self.current_position.position
         angle = self.current_angle
         #position objet: 
-        self.marker_pub.publish(self.create_marker(self, distance * np.cos(angle), distance * np.sin(angle)))
+        self.marker_pub.publish(self.create_marker(self, position.x + distance * np.cos(angle), position.y + distance * np.sin(angle)))
         # Publish a sound event
         self._pubSound.publish(Sound(value=Sound.CLEANINGEND))
         
