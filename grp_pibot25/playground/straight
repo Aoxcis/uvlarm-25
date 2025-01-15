@@ -170,8 +170,8 @@ class StraightCtrl:
         position = self.current_position.position
         angle = self.current_angle
         #position objet: 
-        marker, text_marker = self.create_marker(self, position.x + distance * np.cos(angle), position.y + distance * np.sin(angle), str(self.object_counter),(1.0, 0.0, 0.0))
-        robot_marker, robot_text_marker = self.create_marker(self, position.x, position.y, '', (0.0, 1.0, 0.0))
+        marker, text_marker = self.create_marker(position.x + distance * np.cos(angle), position.y + distance * np.sin(angle), str(self.object_counter), (1.0, 0.0, 0.0))
+        robot_marker, robot_text_marker = self.create_marker(position.x, position.y, '', (0.0, 1.0, 0.0))
         self.marker_pub.publish(marker)
         self.marker_pub.publish(text_marker)
         self.marker_pub.publish(robot_marker)
