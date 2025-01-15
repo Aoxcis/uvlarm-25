@@ -16,6 +16,7 @@ from nav_msgs.msg import OccupancyGrid
 from visualization_msgs.msg import Marker, MarkerArray
 import math
 import time
+import numpy as np
 
 # ROS Node process:
 def main():
@@ -49,7 +50,7 @@ class StraightCtrl:
         self.turnLeft = False
         self.last_linear_x = 0.0  # Track last linear velocity for smooth transition
         self.last_angular_z = 0.0  # Track last angular velocity for smooth transition
-        self.max_linear_speed = 0.8  # Max forward speed (m/s)
+        self.max_linear_speed = 0.5  # Max forward speed (m/s)
         self.max_angular_speed = 2.0  # Max angular speed (rad/s)
         self.acceleration = 0.1  # Rate of acceleration
         self.decceleration = 0.25  # Rate of decceleration
@@ -100,7 +101,7 @@ class StraightCtrl:
         )
 
         self.marker_pub = self.rosNode.create_publisher(
-            MarkerArray, '/visualization_markers', 10
+            Marker, '/visualization_markers', 10
         )
 
         self._pubVelocity = self.rosNode.create_publisher(
@@ -135,7 +136,7 @@ class StraightCtrl:
         marker.scale.z = self.map_resolution
         marker.color.a = 1.0
         marker.color.r = 1.0
-        marker.color.g = 0.0
+        marker.color.g = 1.0
         marker.color.b = 0.0
         marker.id = self.count_objects  # Unique ID for each marker
         self.count_objects+=1
@@ -149,7 +150,7 @@ class StraightCtrl:
         position = self.current_position.position
         # Log the detection event
         self._logger.info(f'Detection event received: {msg.data}')
-        self.marker_pub.publish(self.create_marker(self, position.x, position.y ))
+        self.marker_pub.publish(self.create_marker(self, position.x, position.y))
         
         # Publish a sound event
         self._pubSound.publish(Sound(value=Sound.CLEANINGEND))
