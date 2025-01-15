@@ -21,13 +21,13 @@ class RRTExplorer(Node):
         self.map_resolution = 1.0
         self.map_origin_x = 0.0
         self.map_origin_y = 0.0
-        self.safety_radius = 2  # Cells to consider around a point for safety
+        self.safety_radius = 1  # Cells to consider around a point for safety
         
         self.map_sub = self.create_subscription(
             OccupancyGrid, '/map', self.map_callback, 10)
         self.goal_pub = self.create_publisher(Pose, '/goal', 10)
         self.marker_pub = self.create_publisher(MarkerArray, '/visualization_markers', 10)
-        self.create_timer(3.0, self.explore)  # Run RRT periodically
+        self.create_timer(10.0, self.explore)  # Run RRT periodically
 
     def map_callback(self, msg):
         self.map_resolution = msg.info.resolution
