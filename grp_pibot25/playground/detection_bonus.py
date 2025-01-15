@@ -9,6 +9,7 @@ from std_msgs.msg import String
 from cv_bridge import CvBridge
 import sys
 
+
 class Realsense(Node):
     def __init__(self, fps=30):
         super().__init__('realsense_node')  # Node name
@@ -40,6 +41,16 @@ class Realsense(Node):
         # Initialize background subtractor for motion detection
         self.fgbg = cv2.createBackgroundSubtractorMOG2()
 
+        # Memory to store previously detected objects by ID
+        self.detected_memory = {}
+        self.next_object_id = 1  # Unique ID for each detected object
+
+        # Load template images for template matching (you need to provide the actual templates)
+        self.templates = {
+            "Phantom Ghost": cv2.imread("phantom_ghost_template.png", cv2.IMREAD_GRAYSCALE),
+            "Nuka-Cola Bottle": cv2.imread("nuka_cola_bottle_template.png", cv2.IMREAD_GRAYSCALE)
+        }
+
     def read_and_process_frames(self):
         frames = self.pipeline.wait_for_frames()
         aligned_frames = self.align.process(frames)
@@ -56,7 +67,7 @@ class Realsense(Node):
 
         return color_image, depth_image, depth_frame
 
-    def detect_objects(self, color_image, depth_frame):
+    def detect_objects_contour(self, color_image, depth_frame):
         # Convert the image to HSV color space
         hsv_image = cv2.cvtColor(color_image, cv2.COLOR_BGR2HSV)
 
@@ -87,18 +98,70 @@ class Realsense(Node):
             epsilon = 0.04 * cv2.arcLength(contour, True)
             approx = cv2.approxPolyDP(contour, epsilon, True)
 
-            # We don't care about the shape anymore, just use a placeholder name
-            shape_type = "Object"
+            # Apply shape filters
+            if len(approx) > 4:  # More than 4 vertices indicates a rounded shape (possibly bottle)
+                shape_type = "Phantom Ghost"
+            else:  # Fewer vertices indicates a more jagged shape (possibly ghost)
+                shape_type = "Nuka-Cola Bottle"
 
             # Calculate the center and distance to the object
             center_x = x + w // 2
             center_y = y + h // 2
             distance = depth_frame.get_distance(center_x, center_y)
 
-            # Store the detected object along with distance
-            detected_objects.append((shape_type, x, y, w, h, distance))
+            detected_objects.append((shape_type, x, y, w, h, distance, center_x, center_y))
 
         return detected_objects
+
+    def detect_objects_template(self, color_image, depth_frame):
+        detected_objects = []
+
+        # Convert the color image to grayscale for template matching
+        gray_image = cv2.cvtColor(color_image, cv2.COLOR_BGR2GRAY)
+
+        # Iterate over all the templates and try to match them
+        for label, template in self.templates.items():
+            res = cv2.matchTemplate(gray_image, template, cv2.TM_CCOEFF_NORMED)
+            threshold = 0.8  # You can adjust this threshold
+            loc = np.where(res >= threshold)
+
+            for pt in zip(*loc[::-1]):  # Get coordinates of matched regions
+                x, y = pt
+                w, h = template.shape[::-1]
+
+                # Calculate the center and distance to the object
+                center_x = x + w // 2
+                center_y = y + h // 2
+                distance = depth_frame.get_distance(center_x, center_y)
+
+                detected_objects.append((label, x, y, w, h, distance, center_x, center_y))
+
+        return detected_objects
+
+    def store_or_recognize_object(self, detected_objects):
+        for label, x, y, w, h, distance, center_x, center_y in detected_objects:
+            recognized = False
+
+            # Try to match the detected object with previously stored ones
+            for obj_id, obj_data in self.detected_memory.items():
+                prev_label, prev_center_x, prev_center_y = obj_data
+
+                # If the object is close enough to a previous detection, consider it the same object
+                if abs(center_x - prev_center_x) < 50 and abs(center_y - prev_center_y) < 50:
+                    recognized = True
+                    self.get_logger().info(f"Recognized {label} as {prev_label} with ID {obj_id}.")
+                    break
+
+            # If not recognized, store it as a new object
+            if not recognized:
+                obj_id = self.next_object_id
+                self.detected_memory[obj_id] = (label, center_x, center_y)
+                self.get_logger().info(f"New {label} detected and stored with ID {obj_id}.")
+                self.next_object_id += 1
+
+            # Publish detection message with object ID
+            message = f"{label} (ID {obj_id}) detected at ({x}, {y}), Distance: {distance:.2f}m"
+            self.detection_publisher.publish(String(data=message))
 
     def process_and_publish(self):
         color_image, depth_image, depth_frame = self.read_and_process_frames()
@@ -106,22 +169,25 @@ class Realsense(Node):
         if color_image is None:
             return
 
-        # Detect objects
-        detected_objects = self.detect_objects(color_image, depth_frame)
+        # Detect objects using contours first
+        detected_objects = self.detect_objects_contour(color_image, depth_frame)
 
-        # Draw bounding boxes and add text
-        for idx, (label, x, y, w, h, distance) in enumerate(detected_objects):
-            # Use "Object 1", "Object 2", etc.
-            object_label = f"Object {idx + 1}"
+        # If no objects detected, fall back to template matching
+        if not detected_objects:
+            detected_objects = self.detect_objects_template(color_image, depth_frame)
 
-            # Draw the bounding box and label on the image
+        # Store or recognize objects from memory
+        self.store_or_recognize_object(detected_objects)
+
+        # Draw bounding boxes and add text with object ID
+        for label, x, y, w, h, distance, _, _ in detected_objects:
+            # Draw the bounding box
             cv2.rectangle(color_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            cv2.putText(color_image, f"{object_label} - {distance:.2f}m", (x, y - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-            # Publish detection message
-            message = f"{object_label} detected at ({x}, {y}), Distance: {distance:.2f}m"
-            self.detection_publisher.publish(String(data=message))
+            # Add text (e.g., label with ID and distance) above the bounding box
+            message = f"{label} - ID {self.next_object_id - 1} - {distance:.2f}m"
+            cv2.putText(color_image, message, (x, y - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
         # Publish the color image
         msg_color = self.bridge.cv2_to_imgmsg(color_image, "bgr8")
@@ -136,8 +202,8 @@ class Realsense(Node):
         self.depth_publisher.publish(msg_depth)
 
         # Show the processed image
-        cv2.imshow("Object Detection (Shape-based)", color_image)
-        
+        cv2.imshow("Object Detection (Combined Method)", color_image)
+
         # Check for 'q' key press to kill the program
         if cv2.waitKey(1) & 0xFF == ord('q'):  # 'q' key to quit
             self.get_logger().info("Kill switch triggered by pressing 'q'. Stopping the program...")
@@ -159,15 +225,6 @@ def main(args=None):
 
     try:
         rs_node.run()
-
-
-
-
-
-
-
-
-        
     finally:
         rs_node.pipeline.stop()
         rs_node.destroy_node()
