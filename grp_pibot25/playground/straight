@@ -49,7 +49,6 @@ class StraightCtrl:
         self.turnLeft = False
         self.last_linear_x = 0.0  # Track last linear velocity for smooth transition
         self.last_angular_z = 0.0  # Track last angular velocity for smooth transition
-        self.marker_pub = self.create_publisher(MarkerArray, '/visualization_markers', 10)
         self.max_linear_speed = 0.8  # Max forward speed (m/s)
         self.max_angular_speed = 2.0  # Max angular speed (rad/s)
         self.acceleration = 0.1  # Rate of acceleration
@@ -100,6 +99,10 @@ class StraightCtrl:
             10
         )
 
+        self.marker_pub = self.create_publisher(
+            MarkerArray, '/visualization_markers', 10
+        )
+
         self._pubVelocity = self.rosNode.create_publisher(
             Twist, '/multi/cmd_nav', 10
         )
@@ -146,7 +149,7 @@ class StraightCtrl:
         position = self.current_position.position
         # Log the detection event
         self._logger.info(f'Detection event received: {msg.data}')
-        self.marker_pub.publish(create_marker(self, position.x, position.y ))
+        self.marker_pub.publish(self.create_marker(self, position.x, position.y ))
         
         # Publish a sound event
         self._pubSound.publish(Sound(value=Sound.CLEANINGEND))
