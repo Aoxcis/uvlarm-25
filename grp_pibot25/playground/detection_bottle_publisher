@@ -86,6 +86,7 @@ class Realsense(Node):
             detected_objects.append((x, y, w, h, distance))
 
         return detected_objects
+        
 
     def process_and_publish(self):
         color_image, depth_image, depth_frame = self.read_and_process_frames()
@@ -96,10 +97,11 @@ class Realsense(Node):
         detected_objects = self.detect_green_objects(color_image, depth_frame)
 
         for x, y, w, h, distance in detected_objects:
+            direction = "gauche" if x < 300 else "droite" if x > 600 else "centre"
             cv2.rectangle(color_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
             cv2.putText(color_image, f"Distance: {distance:.2f}m", (x, y - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-            message = f"Object detected at ({x}, {y}), Distance: {distance:.2f}m"
+            message = f"Object detected at ({x}, {y}), Distance: {distance:.2f}m, Direction {direction}"
             self.detection_publisher.publish(String(data=message))
 
         # Publier l'image couleur
