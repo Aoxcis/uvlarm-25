@@ -1,16 +1,27 @@
-launch:
+# launch.yaml
 
+# Include SLAM Toolbox (as before)
 - include:
     file: "/opt/ros/iron/share/slam_toolbox/launch/online_sync_launch.py"
 
+# Include Nav2 with custom parameters
+- include:
+    file: "/opt/ros/iron/share/nav2_bringup/launch/navigation_launch.py"
+    launch-arguments:
+        params_file: "$(find-pkg-share grp_pibot25)/config/nav2_params.yaml"
+    
+    remappings:
+        - from: "/cmd_vel"
+            to: "/multi/cmd_nav"
 
+# RViz node
 - node:
     pkg: "rviz2"
     exec: "rviz2"
     name: "rviz2"
     args: "-d $(find-pkg-share grp_pibot25)/config/config.rviz"
 
-
+# Your custom nodes
 - node:
     pkg: "grp_pibot25"
     exec: "straight_nav2"
