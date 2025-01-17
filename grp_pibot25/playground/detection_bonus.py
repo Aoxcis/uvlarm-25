@@ -126,7 +126,7 @@ class Realsense(Node):
                 continue
 
             res = cv2.matchTemplate(gray_image, template, cv2.TM_CCOEFF_NORMED)
-            threshold = 0.8  # You can adjust this threshold
+            threshold = 0.8  # You can adjust this threshold     
             loc = np.where(res >= threshold)
 
             for pt in zip(*loc[::-1]):  # Get coordinates of matched regions
