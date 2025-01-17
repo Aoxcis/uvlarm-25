@@ -11,7 +11,6 @@ def generate_launch_description():
         'launch',
         'navigation_launch.py'
     )
-
     # Include Nav2 with the custom params file
     nav2_included = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(nav2_launch_path),
