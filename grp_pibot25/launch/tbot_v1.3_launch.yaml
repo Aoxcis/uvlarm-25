@@ -1,38 +1,34 @@
-# launch.yaml
+# Example: tbot_v1.3_launch.yaml
+launch:
+  # 1) Include SLAM Toolbox
+  - include:
+      file: /opt/ros/iron/share/slam_toolbox/launch/online_sync_launch.py
 
-# Include SLAM Toolbox (as before)
-- include:
-    file: "/opt/ros/iron/share/slam_toolbox/launch/online_sync_launch.py"
-
-# Include Nav2 with custom parameters
-- include:
-    file: "/opt/ros/iron/share/nav2_bringup/launch/navigation_launch.py"
-    launch-arguments:
+  # 2) Include Nav2 with custom parameters
+  - include:
+      file: /opt/ros/iron/share/nav2_bringup/launch/navigation_launch.py
+      launch-arguments:
         params_file: "$(find-pkg-share grp_pibot25)/config/nav2_params.yaml"
-    
-    remappings:
+      remappings:
         - from: "/cmd_vel"
-            to: "/multi/cmd_nav"
+          to: "/multi/cmd_nav"
 
-# RViz node
-- node:
-    pkg: "rviz2"
-    exec: "rviz2"
-    name: "rviz2"
-    args: "-d $(find-pkg-share grp_pibot25)/config/config.rviz"
+  # 3) RViz Node
+  - node:
+      pkg: "rviz2"
+      executable: "rviz2"
+      name: "rviz2"
+      arguments:
+        - "-d"
+        - "$(find-pkg-share grp_pibot25)/config/config.rviz"
 
-# Your custom nodes
-- node:
-    pkg: "grp_pibot25"
-    exec: "straight_nav2"
-    name: "straight_nav2"
+  # 4) Your custom node(s)
+  - node:
+      pkg: "grp_pibot25"
+      executable: "straight_nav2"
+      name: "straight_nav2"
 
-- node:
-    pkg: "grp_pibot25"
-    exec: "RRTExplorer"
-    name: "RRTExplorer"
-
-- node:
-    pkg: "grp_pibot25"
-    exec: "detection_bottle_publisher"
-    name: "detection_bottle_publisher"
+  - node:
+      pkg: "grp_pibot25"
+      executable: "RRTExplorer"
+      name: "RRTExplorer"
