@@ -5,6 +5,11 @@ launch:
   - include:
       file: /opt/ros/iron/share/slam_toolbox/launch/online_sync_launch.py
 
+    - include:
+      file: "/absolute/path/to/my_nav2_remap.launch.py"
+      arguments:
+        - "remap_cmd_vel:=/multi/cmd_nav"
+
   # 2) Include Nav2 with custom parameters
   #    (Replace "launch-arguments" with "arguments", a list of strings)
   - include:
