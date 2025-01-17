@@ -66,10 +66,11 @@ class Nav2Navigator(Node):
         if not goal_handle.accepted:
             self.get_logger().info('Goal rejected')
             return
-
-        self.get_logger().info('Goal accepted')
-        self.current_goal_handle = goal_handle
-        self.current_goal_handle.result().add_done_callback(self.result_callback)
+        else:
+            self.get_logger().info('Goal accepted')
+            self._result_future = goal_handle.get_result_async()
+            self._result_future.add_done_callback(self.result_callback)
+        
 
     def feedback_callback(self, feedback_msg):
         feedback = feedback_msg.feedback

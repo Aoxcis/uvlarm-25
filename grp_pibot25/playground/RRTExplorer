@@ -6,8 +6,9 @@ import math
 import random
 
 from nav_msgs.msg import OccupancyGrid
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import Pose
 from visualization_msgs.msg import Marker, MarkerArray
+from std_msgs.msg import Header  # Import Header from std_msgs
 
 # TF2 imports
 import tf2_ros
@@ -40,7 +41,7 @@ class RRTExplorer(Node):
         )
 
         # Publish PoseStamped (instead of raw Pose), so the navigation stack knows the frame
-        self.goal_pub = self.create_publisher(PoseStamped, '/goal', 10)
+        self.goal_pub = self.create_publisher(Pose, '/goal', 10)
 
         # Visualization for RRT markers
         self.marker_pub = self.create_publisher(MarkerArray, '/visualization_markers', 10)
@@ -210,21 +211,27 @@ class RRTExplorer(Node):
 
     def publish_goal(self, gx, gy):
         """
-        Convert cell coords -> world coords, then publish as a PoseStamped.
+        Convert cell coords -> world coords, then publish as a Pose with a header.
         """
         world_x = self.map_origin_x + gx * self.map_resolution
         world_y = self.map_origin_y + gy * self.map_resolution
 
-        goal_msg = PoseStamped()
-        goal_msg.header.stamp = self.get_clock().now().to_msg()
-        goal_msg.header.frame_id = "map"
+        # Create the Pose message
+        goal_msg = Pose()
 
-        goal_msg.pose.position.x = world_x
-        goal_msg.pose.position.y = world_y
-        goal_msg.pose.position.z = 0.0
+        # Set the header (manually using Header)
+        header = Header()
+        header.stamp = self.get_clock().now().to_msg()  # Current timestamp
+        header.frame_id = "map"  # Reference frame for the pose
+
+        # Add the header information manually to the Pose message
+        goal_msg.position.x = world_x
+        goal_msg.position.y = world_y
+        goal_msg.position.z = 0.0
         # Orientation: just set it to identity (facing forward in map frame)
-        goal_msg.pose.orientation.w = 1.0
+        goal_msg.orientation.w = 1.0
 
+        # Publish the Pose message
         self.goal_pub.publish(goal_msg)
         self.get_logger().info(
             f"Published RRT goal in /map frame: ({world_x:.2f}, {world_y:.2f})"
