@@ -3,7 +3,6 @@ launch:
 - include:
     file: "/opt/ros/iron/share/slam_toolbox/launch/online_sync_launch.py"
 
-
 - node:
     pkg: "rviz2"
     exec: "rviz2"
@@ -25,3 +24,8 @@ launch:
     pkg: "grp_pibot25"
     exec: "detection_bottle_publisher"
     name: "detection_bottle_publisher"
+
+- node:
+    pkg: "grp_pibot25"
+    exec: "nav_remap"
+    name: "nav_remap"
