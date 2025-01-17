@@ -18,6 +18,7 @@ import math
 import time
 import numpy as np
 
+
 # ROS Node process:
 def main():
     # Initialize ROS and a ROS node
@@ -63,6 +64,10 @@ class StraightCtrl:
         self.map_origin_y = 0.0
         #initialize object counter
         self.object_counter = 0
+        #initialize current position
+        self.current_position = Pose()
+        self.current_angle = 0.0
+
     def initializeRosNode(self):
         # Initialize subscribers and publishers
         self.map_sub = self.rosNode.create_subscription(
@@ -124,7 +129,7 @@ class StraightCtrl:
         self.map_origin_y = msg.info.origin.position.y
         self.map_data = np.array(msg.data).reshape(msg.info.height, msg.info.width)
     
-    def create_marker(self, node, x, y, text):
+    def create_marker(self, x, y, text):
         marker = Marker()
         marker.header.frame_id = "map"
         marker.type = Marker.SPHERE
@@ -170,7 +175,7 @@ class StraightCtrl:
         position = self.current_position.position
         angle = self.current_angle
         #position objet: 
-        marker, text_marker =self.create_marker(self, position.x + distance * np.cos(angle), position.y + distance * np.sin(angle),'object')
+        marker, text_marker = self.create_marker(position.x + distance * np.cos(angle), position.y + distance * np.sin(angle), 'object')
         self.marker_pub.publish(marker)
         self.marker_pub.publish(text_marker)
         self.object_counter += 1
