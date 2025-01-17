@@ -148,7 +148,7 @@ class StraightCtrl:
         text_marker.pose.position.x = x
         text_marker.pose.position.y = y
         text_marker.pose.position.z = 1.0  # Slightly above the sphere
-        text_marker.scale.z = 0.5  # Text size
+        text_marker.scale.z = 0.3  # Text size
         text_marker.color.a = 1.0
         text_marker.color.r = 1.0
         text_marker.color.g = 1.0
@@ -170,12 +170,9 @@ class StraightCtrl:
         position = self.current_position.position
         angle = self.current_angle
         #position objet: 
-        marker, text_marker = self.create_marker(position.x + distance * np.cos(angle), position.y + distance * np.sin(angle), str(self.object_counter))
-        robot_marker, robot_text_marker = self.create_marker(position.x, position.y, '')
+        marker, text_marker =self.create_marker(self, position.x + distance * np.cos(angle), position.y + distance * np.sin(angle),'object')
         self.marker_pub.publish(marker)
         self.marker_pub.publish(text_marker)
-        self.marker_pub.publish(robot_marker)
-        self.marker_pub.publish(robot_text_marker)
         self.object_counter += 1
         # Publish a sound event
         self._pubSound.publish(Sound(value=Sound.CLEANINGEND))
