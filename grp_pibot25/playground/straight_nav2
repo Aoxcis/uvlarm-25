@@ -157,7 +157,7 @@ class Nav2Navigator(Node):
         feedback = feedback_msg.feedback
         x = feedback.current_pose.pose.position.x
         y = feedback.current_pose.pose.position.y
-        self.get_logger().info(f'Current robot position: x={x:.2f}, y={y:.2f}')
+        # self.get_logger().info(f'Current robot position: x={x:.2f}, y={y:.2f}')
 
     # --------------------------------------------------------------------------
     #   Bumper, WheelDrop, and Button
