@@ -1,0 +1,262 @@
+#!/usr/bin/env python3
+import rclpy
+from rclpy.node import Node
+import numpy as np
+import math
+import random
+
+from nav_msgs.msg import OccupancyGrid
+from geometry_msgs.msg import Pose
+from visualization_msgs.msg import Marker, MarkerArray
+
+import tf2_ros
+from tf2_ros import TransformException
+from rclpy.duration import Duration
+from collections import deque
+from scipy.spatial import cKDTree
+
+class TreeNode:
+    def __init__(self, x, y, parent=None):
+        self.x = x
+        self.y = y
+        self.parent = parent
+
+class RRTExplorer(Node):
+    def __init__(self):
+        super().__init__('rrt_explorer')
+
+        self.map_data = None
+        self.map_resolution = 1.0
+        self.map_origin_x = 0.0
+        self.map_origin_y = 0.0
+        self.safety_radius = self.declare_parameter('safety_radius', 1).get_parameter_value().integer_value
+        self.step_size = self.declare_parameter('step_size', 10).get_parameter_value().integer_value
+        self.min_goal_distance = self.declare_parameter('min_goal_distance', 1.0).get_parameter_value().double_value
+        self.cluster_radius = self.declare_parameter('cluster_radius', 5).get_parameter_value().integer_value
+
+        # TF buffer/listener
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
+
+        # Subscriptions and publishers
+        self.map_sub = self.create_subscription(
+            OccupancyGrid, '/map', self.map_callback, 10
+        )
+
+        self.goal_pub = self.create_publisher(Pose, '/goal', 10)
+        self.marker_pub = self.create_publisher(MarkerArray, '/visualization_markers', 10)
+
+        # Run RRT periodically
+        self.timer_period = 5.0
+        self.timer = self.create_timer(self.timer_period, self.explore)
+
+        self.robot_cell_x = None
+        self.robot_cell_y = None
+        self.last_goal = None
+
+    def map_callback(self, msg):
+        self.map_resolution = msg.info.resolution
+        self.map_origin_x = msg.info.origin.position.x
+        self.map_origin_y = msg.info.origin.position.y
+        self.map_data = np.array(msg.data).reshape(msg.info.height, msg.info.width)
+
+    def explore(self):
+        if self.map_data is None:
+            self.get_logger().warn("No map data yet.")
+            return
+
+        if not self.update_robot_position():
+            return
+
+        start = TreeNode(self.robot_cell_x, self.robot_cell_y)
+        tree = [start]
+        markers = MarkerArray()
+
+        max_iterations = 100
+
+        for _ in range(max_iterations):
+            sampled = self.sample_free_biased()
+            if sampled is None:
+                continue
+            rx, ry = sampled
+            nearest = self.nearest_node(tree, rx, ry)
+            new_node = self.steer(nearest, rx, ry, self.step_size)
+
+            if new_node and self.is_free(new_node.x, new_node.y):
+                new_node.parent = nearest
+                tree.append(new_node)
+                markers.markers.append(self.create_marker(new_node, len(markers.markers)))
+
+        frontier_nodes = [node for node in tree if self.near_unknown(node.x, node.y)]
+
+        if not frontier_nodes:
+            self.get_logger().info("No frontier nodes found this round.")
+            self.marker_pub.publish(markers)
+            return
+
+        clusters = self.cluster_nodes(frontier_nodes, cluster_radius=self.cluster_radius)
+        if not clusters:
+            self.get_logger().info("No valid clusters of frontier nodes found.")
+            self.marker_pub.publish(markers)
+            return
+
+        largest_cluster = max(clusters, key=len)
+        self.get_logger().info(f"Found {len(clusters)} frontier clusters. Largest size: {len(largest_cluster)}")
+
+        closest_goal = min(largest_cluster, key=lambda n: math.hypot(n.x - self.robot_cell_x, n.y - self.robot_cell_y))
+        self.publish_goal(closest_goal.x, closest_goal.y)
+        self.marker_pub.publish(markers)
+
+    def update_robot_position(self):
+        try:
+            when = rclpy.time.Time()
+            transform_stamped = self.tf_buffer.lookup_transform(
+                'map', 'base_link', when, timeout=Duration(seconds=0.5)
+            )
+        except TransformException as ex:
+            self.get_logger().warn(f"Could not get transform from map->base_link: {ex}")
+            return False
+
+        robot_x_map = transform_stamped.transform.translation.x
+        robot_y_map = transform_stamped.transform.translation.y
+        self.get_logger().info(f"Robot (map frame): ({robot_x_map:.2f}, {robot_y_map:.2f})")
+
+        cx = int((robot_x_map - self.map_origin_x) / self.map_resolution)
+        cy = int((robot_y_map - self.map_origin_y) / self.map_resolution)
+
+        if not self.is_cell_valid(cx, cy) or not self.is_free(cx, cy):
+            self.get_logger().warn("Robot cell is invalid/occupied. Using map center.")
+            cx = self.map_data.shape[1] // 2
+            cy = self.map_data.shape[0] // 2
+
+        self.robot_cell_x = cx
+        self.robot_cell_y = cy
+        return True
+
+    def sample_free_biased(self):
+        height, width = self.map_data.shape
+        if random.random() < 0.7:
+            unknown_cells = np.argwhere(self.map_data == -1)
+            if len(unknown_cells) > 0:
+                selected = random.choice(unknown_cells)
+                return selected[1], selected[0]
+        return self.sample_free_away_from_robot()
+
+    def sample_free_away_from_robot(self):
+        min_cell_dist = int(self.min_goal_distance / self.map_resolution)
+
+        height, width = self.map_data.shape
+        while True:
+            rx = random.randint(0, width - 1)
+            ry = random.randint(0, height - 1)
+            if not self.is_free(rx, ry):
+                continue
+            cell_dist = math.hypot(rx - self.robot_cell_x, ry - self.robot_cell_y)
+            if cell_dist >= min_cell_dist:
+                return rx, ry
+
+    def steer(self, nearest, rx, ry, step_size=10):
+        dx = rx - nearest.x
+        dy = ry - nearest.y
+        dist = math.hypot(dx, dy)
+        if dist < step_size:
+            return TreeNode(rx, ry, parent=nearest)
+
+        theta = math.atan2(dy, dx)
+        new_x = int(nearest.x + step_size * math.cos(theta))
+        new_y = int(nearest.y + step_size * math.sin(theta))
+
+        if not self.near_unknown(new_x, new_y):
+            return None
+
+        return TreeNode(new_x, new_y, parent=nearest)
+
+    def is_free(self, x, y):
+        if not self.is_cell_valid(x, y):
+            return False
+        for nx in range(x - self.safety_radius, x + self.safety_radius + 1):
+            for ny in range(y - self.safety_radius, y + self.safety_radius + 1):
+                if not self.is_cell_valid(nx, ny):
+                    return False
+                if self.map_data[ny, nx] != 0:
+                    return False
+        return True
+
+    def is_cell_valid(self, x, y):
+        h, w = self.map_data.shape
+        return (0 <= x < w and 0 <= y < h)
+
+    def near_unknown(self, x, y):
+        for nx in range(x - 2, x + 3):
+            for ny in range(y - 2, y + 3):
+                if self.is_cell_valid(nx, ny):
+                    if self.map_data[ny, nx] == -1:
+                        return True
+        return False
+
+    def publish_goal(self, gx, gy):
+        world_x = self.map_origin_x + gx * self.map_resolution
+        world_y = self.map_origin_y + gy * self.map_resolution
+
+        if self.last_goal == (gx, gy):
+            self.get_logger().info("Skipping redundant goal.")
+            return
+        self.last_goal = (gx, gy)
+
+        goal_msg = Pose()
+        goal_msg.position.x = world_x
+        goal_msg.position.y = world_y
+        goal_msg.position.z = 0.0
+        goal_msg.orientation.w = 1.0
+
+        self.goal_pub.publish(goal_msg)
+        self.get_logger().info(f"Published RRT goal near frontier: ({world_x:.2f}, {world_y:.2f})")
+
+    def nearest_node(self, tree, rx, ry):
+        return min(tree, key=lambda node: (node.x - rx)**2 + (node.y - ry)**2)
+
+    def create_marker(self, node, marker_id):
+        marker = Marker()
+        marker.header.frame_id = "map"
+        marker.type = Marker.SPHERE
+        marker.action = Marker.ADD
+
+        marker.pose.position.x = self.map_origin_x + node.x * self.map_resolution
+        marker.pose.position.y = self.map_origin_y + node.y * self.map_resolution
+        marker.pose.position.z = 0.0
+
+        marker.scale.x = self.map_resolution
+        marker.scale.y = self.map_resolution
+        marker.scale.z = self.map_resolution
+
+        marker.color.a = 1.0
+        marker.color.g = 1.0
+        marker.id = marker_id
+        return marker
+
+    def cluster_nodes(self, nodes, cluster_radius=5):
+        node_positions = [(n.x, n.y) for n in nodes]
+        tree = cKDTree(node_positions)
+        clusters = []
+        visited = set()
+
+        for idx, pos in enumerate(node_positions):
+            if idx in visited:
+                continue
+
+            neighbors = tree.query_ball_point(pos, cluster_radius)
+            cluster = [nodes[i] for i in neighbors]
+            clusters.append(cluster)
+            visited.update(neighbors)
+
+        return clusters
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = RRTExplorer()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
