@@ -46,7 +46,7 @@ class RRTExplorer(Node):
         self.marker_pub = self.create_publisher(MarkerArray, '/visualization_markers', 10)
 
         # Run RRT periodically (e.g., every 3s)
-        self.timer_period = 3.0
+        self.timer_period = 5.0
         self.timer = self.create_timer(self.timer_period, self.explore)
 
     def map_callback(self, msg):
@@ -105,9 +105,9 @@ class RRTExplorer(Node):
 
         # Basic RRT expansion
         max_iterations = 100
-        step_size = 5
+        step_size = 10  # Increase step size for further exploration
         for _ in range(max_iterations):
-            rand_x, rand_y = self.sample_free()
+            rand_x, rand_y = self.sample_free(further_away=True)
             nearest = self.nearest_node(tree, rand_x, rand_y)
             new_node = self.steer(nearest, rand_x, rand_y, step_size)
 
@@ -130,19 +130,27 @@ class RRTExplorer(Node):
         # If no frontier found this round, publish the RRT tree markers anyway
         self.marker_pub.publish(markers)
 
-    def sample_free(self):
+    def sample_free(self, further_away=False):
         """
         Randomly sample a cell that's free (unoccupied),
-        respecting the safety radius.
+        respecting the safety radius. If 'further_away' is True, sample
+        farther from the robot's position.
         """
         height, width = self.map_data.shape
         while True:
-            rx = random.randint(0, width - 1)
-            ry = random.randint(0, height - 1)
-            if self.is_free(rx, ry):
-                return rx, ry
+            if further_away:
+                # Sample far away from the robot (based on map size)
+                rand_x = random.randint(0, width - 1)
+                rand_y = random.randint(0, height - 1)
+            else:
+                # Sample normally
+                rand_x = random.randint(0, width - 1)
+                rand_y = random.randint(0, height - 1)
 
-    def steer(self, nearest, rand_x, rand_y, step_size=5):
+            if self.is_free(rand_x, rand_y):
+                return rand_x, rand_y
+
+    def steer(self, nearest, rand_x, rand_y, step_size=10):
         dx = rand_x - nearest.x
         dy = rand_y - nearest.y
         dist = math.hypot(dx, dy)

@@ -3,6 +3,7 @@ launch:
 - include:
     file: "/opt/ros/iron/share/slam_toolbox/launch/online_sync_launch.py"
 
+
 - node:
     pkg: "rviz2"
     exec: "rviz2"
@@ -12,8 +13,8 @@ launch:
 
 - node:
     pkg: "grp_pibot25"
-    exec: "straight_auto"
-    name: "straight_auto"
+    exec: "straight_nav2"
+    name: "straight_nav2"
 
 - node:
     pkg: "grp_pibot25"

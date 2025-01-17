@@ -1,26 +1,18 @@
 #!/usr/bin/env python3
 
-import math
-import sys
-import numpy as np
-
 import rclpy
 from rclpy.node import Node
-
 from nav_msgs.msg import OccupancyGrid
-from geometry_msgs.msg import Pose, Twist
-from sensor_msgs.msg import LaserScan
-from kobuki_ros_interfaces.msg import BumperEvent, WheelDropEvent, ButtonEvent, Sound
-
+from geometry_msgs.msg import Pose, Twist, PoseStamped
+from kobuki_ros_interfaces.msg import BumperEvent, WheelDropEvent, ButtonEvent
 import tf2_ros
+import math
+import numpy as np
 
 class AStarNavigator(Node):
     def __init__(self):
         super().__init__('a_star_navigator')
 
-        # ---------------------------------------------------------------------
-        #  Map Data
-        # ---------------------------------------------------------------------
         self.map_data = None
         self.map_width = 0
         self.map_height = 0
@@ -48,7 +40,7 @@ class AStarNavigator(Node):
         self.last_ang_speed = 0.0
 
         # Stop if we're within this distance of the goal
-        self.goal_reached_dist = 0.1
+        self.goal_reached_dist = 0.05
 
         # If heading error is larger than this, we reduce forward speed
         self.large_angle_threshold = math.radians(20)
@@ -64,9 +56,8 @@ class AStarNavigator(Node):
             OccupancyGrid, '/map', self.map_callback, 10
         )
         self.goal_sub = self.create_subscription(
-            Pose, '/goal', self.goal_callback, 10
+            PoseStamped, '/goal', self.goal_callback, 10
         )
-
         self.bumper_sub = self.create_subscription(
             BumperEvent, '/events/bumper', self.bumper_callback, 10
         )
@@ -80,193 +71,124 @@ class AStarNavigator(Node):
         # Publisher for velocity commands
         self.cmd_pub = self.create_publisher(Twist, '/multi/cmd_nav', 10)
 
-        # (Optional) Sound
-        self.sound_pub = self.create_publisher(Sound, '/commands/sound', 10)
-
-        # Control loop timer
+        # Timer for control loop
         self.timer = self.create_timer(0.1, self.control_loop)
 
         self.get_logger().info("AStarNavigator node initialized.")
 
-    # --------------------------------------------------------------------------
-    #    Map & Goal Callbacks
-    # --------------------------------------------------------------------------
     def map_callback(self, msg: OccupancyGrid):
-        """ Store map data for potential collision or debugging. """
-        # Convert to 2D array
-        arr = np.array(msg.data, dtype=np.int8)
-        self.map_data = arr.reshape(msg.info.height, msg.info.width)
+        """Store map data for A* planning."""
+        self.map_data = np.array(msg.data).reshape(msg.info.height, msg.info.width)
         self.map_width = msg.info.width
         self.map_height = msg.info.height
         self.map_resolution = msg.info.resolution
         self.map_origin_x = msg.info.origin.position.x
         self.map_origin_y = msg.info.origin.position.y
-        self.get_logger().info(f"Map received: size={self.map_width}x{self.map_height}, res={self.map_resolution:.3f}")
+        self.get_logger().info(f"Map received: size = {self.map_width}x{self.map_height}, res={self.map_resolution}")
 
-    def goal_callback(self, msg: Pose):
-        """Called when a new goal is published (from RRTExplorer)."""
-        self.goal_x = msg.position.x
-        self.goal_y = msg.position.y
-        self.get_logger().info(f"New goal received: x={self.goal_x:.2f}, y={self.goal_y:.2f}")
+    def goal_callback(self, msg: PoseStamped):
+        """Store goal position and start planning."""
+        self.goal_x = msg.pose.position.x
+        self.goal_y = msg.pose.position.y
+        self.get_logger().info(f"New goal received: x={self.goal_x}, y={self.goal_y}")
 
-    # --------------------------------------------------------------------------
-    #    Control Loop
-    # --------------------------------------------------------------------------
     def control_loop(self):
-        """ Periodic control loop that moves the robot toward the current goal. """
-        # If no goal is set, do nothing
+        """Main control loop to follow the path."""
         if self.goal_x is None or self.goal_y is None:
             return
 
-        # If bumper/wheel dropped, freeze
-        if self.bumped:
-            self.stop_robot()
-            return
-
-        # Get the robot's current position in map frame
+        # Get the robot's current position
         try:
-            transform = self.tf_buffer.lookup_transform(
-                'map', 'base_link', rclpy.time.Time()
-            )
-        except (tf2_ros.LookupException, 
-                tf2_ros.ConnectivityException,
-                tf2_ros.ExtrapolationException) as e:
+            transform = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
+            robot_x = transform.transform.translation.x
+            robot_y = transform.transform.translation.y
+            robot_theta = self.get_yaw_from_quaternion(transform.transform.rotation)
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
             self.get_logger().warn("Error getting transform: " + str(e))
             return
 
-        robot_x = transform.transform.translation.x
-        robot_y = transform.transform.translation.y
-        robot_yaw = self.get_yaw_from_quaternion(transform.transform.rotation)
-
-        # Check distance to goal
+        # Calculate the distance and angle to the goal
         dx = self.goal_x - robot_x
         dy = self.goal_y - robot_y
-        dist_to_goal = math.hypot(dx, dy)
+        distance_to_goal = math.sqrt(dx**2 + dy**2)
+        angle_to_goal = math.atan2(dy, dx)
 
-        if dist_to_goal < self.goal_reached_dist:
-            # Goal reached!
-            self.get_logger().info("Goal reached! Stopping the robot.")
+        # Debugging information
+        self.get_logger().info(f"Robot position: x={robot_x}, y={robot_y}, theta={robot_theta}")
+        self.get_logger().info(f"Goal position: x={self.goal_x}, y={self.goal_y}")
+        self.get_logger().info(f"Distance to goal: {distance_to_goal}")
+
+        # Check if the goal is reached
+        if distance_to_goal < self.goal_reached_dist:
+            self.get_logger().info("Goal reached!")
+            self.stop_robot()
             self.goal_x = None
             self.goal_y = None
-            self.stop_robot()
             return
 
-        # Compute heading
-        desired_yaw = math.atan2(dy, dx)
-        yaw_error = self.normalize_angle(desired_yaw - robot_yaw)
+        # Calculate the angular difference to the goal direction
+        angle_diff = angle_to_goal - robot_theta
+        if angle_diff > math.pi:
+            angle_diff -= 2 * math.pi
+        elif angle_diff < -math.pi:
+            angle_diff += 2 * math.pi
 
-        # ---------------------------
-        #   Movement Logic
-        # ---------------------------
-        # 1) Determine target angular velocity based on yaw_error
-        #    - saturate at max_ang_speed
-        #    - sign depends on direction of the error
-        #    - for smaller yaw errors, smaller angular velocity
-        Kp_yaw = 1.0
-        target_ang_vel = Kp_yaw * yaw_error
-        target_ang_vel = max(-self.max_ang_speed, min(self.max_ang_speed, target_ang_vel))
-
-        # 2) Determine target linear velocity
-        #    - If yaw_error is large (e.g. > 20 deg), turn in place by setting linear speed near 0
-        #    - Otherwise, move forward up to max_lin_speed
-        angle_threshold = self.large_angle_threshold  # e.g., 20 deg
-        if abs(yaw_error) > angle_threshold:
-            # Big yaw error => rotate in place
-            target_lin_vel = 0.0
-        else:
-            # Go forward, possibly scale speed by distance or error
-            # Example: linear speed is min of (dist_to_goal, max_lin_speed)
-            target_lin_vel = min(dist_to_goal, self.max_lin_speed)
-
-        # 3) Accelerate or decelerate to those targets
-        lin_vel = self.accelerate_linear(self.last_lin_speed, target_lin_vel)
-        ang_vel = self.accelerate_angular(self.last_ang_speed, target_ang_vel)
-
-        # Publish Twist
         twist = Twist()
-        twist.linear.x = lin_vel
-        twist.angular.z = ang_vel
+
+        # Movement logic towards the goal
+        if not self.bumped:
+            if abs(angle_diff) > self.large_angle_threshold:
+                twist.linear.x = 0.0
+                twist.angular.z = self.max_ang_speed if angle_diff > 0 else -self.max_ang_speed
+            else:
+                twist.linear.x = min(self.max_lin_speed, distance_to_goal)
+                twist.angular.z = angle_diff
+        else:
+            twist.linear.x = 0.0
+            twist.angular.z = 0.0
+
+        # Publish the velocity command
         self.cmd_pub.publish(twist)
-
-        # Save for next iteration
-        self.last_lin_speed = lin_vel
-        self.last_ang_speed = ang_vel
-
-    # --------------------------------------------------------------------------
-    #    Helpers
-    # --------------------------------------------------------------------------
 
     def stop_robot(self):
-        """Stop the robot by sending zero velocities."""
-        self.last_lin_speed = 0.0
-        self.last_ang_speed = 0.0
+        """Stop the robot by publishing zero velocities."""
         twist = Twist()
+        twist.linear.x = 0.0
+        twist.angular.z = 0.0
         self.cmd_pub.publish(twist)
 
-    def get_yaw_from_quaternion(self, q):
-        """Compute yaw from a quaternion."""
-        x = q.x
-        y = q.y
-        z = q.z
-        w = q.w
-        siny_cosp = 2.0 * (w * z + x * y)
-        cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
-        yaw = math.atan2(siny_cosp, cosy_cosp)
-        return yaw
+    def get_yaw_from_quaternion(self, quaternion):
+        """Convert quaternion to yaw angle."""
+        x = quaternion.x
+        y = quaternion.y
+        z = quaternion.z
+        w = quaternion.w
+        siny_cosp = 2 * (w * z + x * y)
+        cosy_cosp = 1 - 2 * (y * y + z * z)
+        return math.atan2(siny_cosp, cosy_cosp)
 
-    def normalize_angle(self, angle):
-        """Normalize angle to [-pi, pi]."""
-        while angle > math.pi:
-            angle -= 2.0 * math.pi
-        while angle < -math.pi:
-            angle += 2.0 * math.pi
-        return angle
-
-    def accelerate_linear(self, current_v, target_v):
-        """Smoothly accelerate/decelerate the linear velocity."""
-        if current_v < target_v:
-            return min(current_v + self.lin_accel, target_v)
-        else:
-            return max(current_v - self.lin_accel, target_v)
-
-    def accelerate_angular(self, current_w, target_w):
-        """Smoothly accelerate/decelerate the angular velocity."""
-        if current_w < target_w:
-            return min(current_w + self.ang_accel, target_w)
-        else:
-            return max(current_w - self.ang_accel, target_w)
-
-    # --------------------------------------------------------------------------
-    #    Bumper & Button Callbacks
-    # --------------------------------------------------------------------------
     def bumper_callback(self, msg: BumperEvent):
-        """Stop if bumper is pressed."""
+        """Handle bumper events."""
         if msg.state == BumperEvent.PRESSED:
             self.bumped = True
-            self.get_logger().info("Bumper pressed -> Robot paused.")
+            self.get_logger().info("Bumper pressed!")
+            self.stop_robot()
         else:
             self.bumped = False
-            self.get_logger().info("Bumper released -> Robot resumed.")
 
     def wheeldrop_callback(self, msg: WheelDropEvent):
-        """Stop if wheel is dropped."""
+        """Handle wheel drop events."""
         if msg.state == WheelDropEvent.DROPPED:
             self.bumped = True
-            self.get_logger().info("Wheel dropped -> Robot paused.")
+            self.get_logger().info("Wheel dropped!")
+            self.stop_robot()
         else:
             self.bumped = False
-            self.get_logger().info("Wheel restored -> Robot resumed.")
 
     def button_callback(self, msg: ButtonEvent):
-        """
-        Example button logic.
-        If you want the button to toggle movement, for instance:
-        """
+        """Handle button events."""
         if msg.state == ButtonEvent.PRESSED:
-            # Toggle bumped
-            self.bumped = not self.bumped
-            self.get_logger().info(f"Button pressed -> bumped={self.bumped}")
-
+            self.get_logger().info(f"Button {msg.button} pressed!")
 
 def main(args=None):
     rclpy.init(args=args)
