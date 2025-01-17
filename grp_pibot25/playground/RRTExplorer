@@ -12,6 +12,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 import tf2_ros
 from tf2_ros import TransformException
 from rclpy.duration import Duration
+from collections import deque
 
 class TreeNode:
     def __init__(self, x, y, parent=None):
@@ -44,10 +45,11 @@ class RRTExplorer(Node):
         self.goal_pub = self.create_publisher(Pose, '/goal', 10)
         self.marker_pub = self.create_publisher(MarkerArray, '/visualization_markers', 10)
 
+        # Run RRT periodically
         self.timer_period = 5.0
         self.timer = self.create_timer(self.timer_period, self.explore)
 
-        # We'll store the robot position in map coords (cells) each iteration
+        # We'll store the robot position in map coords (cells)
         self.robot_cell_x = None
         self.robot_cell_y = None
 
@@ -64,30 +66,10 @@ class RRTExplorer(Node):
             return
 
         # Get the robot's current (x, y) in map frame
-        try:
-            when = rclpy.time.Time()
-            transform_stamped = self.tf_buffer.lookup_transform(
-                'map', 'base_link', when, timeout=Duration(seconds=0.5)
-            )
-        except (TransformException) as ex:
-            self.get_logger().warn(f"Could not get transform from map->base_link: {ex}")
+        if not self.update_robot_position():
             return
 
-        # Robot position in map (meters)
-        robot_x_map = transform_stamped.transform.translation.x
-        robot_y_map = transform_stamped.transform.translation.y
-        self.get_logger().info(f"Robot (map frame): ({robot_x_map:.2f}, {robot_y_map:.2f})")
-
-        # Convert to cell coords
-        self.robot_cell_x = int((robot_x_map - self.map_origin_x) / self.map_resolution)
-        self.robot_cell_y = int((robot_y_map - self.map_origin_y) / self.map_resolution)
-
-        # If invalid or occupied, fallback to map center
-        if not self.is_cell_valid(self.robot_cell_x, self.robot_cell_y):
-            self.get_logger().warn("Robot's current cell is invalid or occupied. Using map center.")
-            self.robot_cell_x = self.map_data.shape[1] // 2
-            self.robot_cell_y = self.map_data.shape[0] // 2
-
+        # Build RRT from the robot cell position
         start = TreeNode(self.robot_cell_x, self.robot_cell_y)
         tree = [start]
         markers = MarkerArray()
@@ -96,10 +78,9 @@ class RRTExplorer(Node):
         step_size = 10
 
         for _ in range(max_iterations):
-            # Now we sample free cells that are directly "far enough" from the robot
-            rand_x, rand_y = self.sample_free_away_from_robot()
-            nearest = self.nearest_node(tree, rand_x, rand_y)
-            new_node = self.steer(nearest, rand_x, rand_y, step_size)
+            rx, ry = self.sample_free_away_from_robot()
+            nearest = self.nearest_node(tree, rx, ry)
+            new_node = self.steer(nearest, rx, ry, step_size)
 
             if self.is_free(new_node.x, new_node.y):
                 new_node.parent = nearest
@@ -108,42 +89,83 @@ class RRTExplorer(Node):
                 # Marker for visualization
                 markers.markers.append(self.create_marker(new_node))
 
-                # If this new node is near unknown, we consider it a valid frontier
-                if self.near_unknown(new_node.x, new_node.y):
-                    # No distance check needed now, we only sample far nodes
-                    self.publish_goal(new_node.x, new_node.y)
-                    self.marker_pub.publish(markers)
-                    return
+        # After building the RRT, find frontier nodes (i.e., near unknown)
+        frontier_nodes = [node for node in tree if self.near_unknown(node.x, node.y)]
 
+        if not frontier_nodes:
+            self.get_logger().info("No frontier nodes found this round.")
+            self.marker_pub.publish(markers)
+            return
+
+        # Cluster frontier nodes, pick the largest cluster, and pick a goal in that cluster
+        clusters = self.cluster_nodes(frontier_nodes, cluster_radius=5)  # in cells
+        if not clusters:
+            self.get_logger().info("No valid clusters of frontier nodes found.")
+            self.marker_pub.publish(markers)
+            return
+
+        largest_cluster = max(clusters, key=len)
+        self.get_logger().info(f"Found {len(clusters)} frontier clusters. Largest size: {len(largest_cluster)}")
+
+        # For simplicity, we'll pick the average position of the largest cluster as the goal
+        avg_x = sum(n.x for n in largest_cluster) / len(largest_cluster)
+        avg_y = sum(n.y for n in largest_cluster) / len(largest_cluster)
+        goal_x = int(avg_x)
+        goal_y = int(avg_y)
+
+        self.publish_goal(goal_x, goal_y)
         self.marker_pub.publish(markers)
 
+    def update_robot_position(self):
+        """Update self.robot_cell_x, self.robot_cell_y from TF, returns True if valid."""
+        try:
+            when = rclpy.time.Time()
+            transform_stamped = self.tf_buffer.lookup_transform(
+                'map', 'base_link', when, timeout=Duration(seconds=0.5)
+            )
+        except (TransformException) as ex:
+            self.get_logger().warn(f"Could not get transform from map->base_link: {ex}")
+            return False
+
+        # Robot position in map (meters)
+        robot_x_map = transform_stamped.transform.translation.x
+        robot_y_map = transform_stamped.transform.translation.y
+        self.get_logger().info(f"Robot (map frame): ({robot_x_map:.2f}, {robot_y_map:.2f})")
+
+        # Convert to cell coords
+        cx = int((robot_x_map - self.map_origin_x) / self.map_resolution)
+        cy = int((robot_y_map - self.map_origin_y) / self.map_resolution)
+
+        if not self.is_cell_valid(cx, cy) or not self.is_free(cx, cy):
+            self.get_logger().warn("Robot cell is invalid/occupied. Using map center.")
+            cx = self.map_data.shape[1] // 2
+            cy = self.map_data.shape[0] // 2
+
+        self.robot_cell_x = cx
+        self.robot_cell_y = cy
+        return True
+
     def sample_free_away_from_robot(self):
-        """
-        Randomly sample a free cell that's at least self.min_goal_distance
-        away (in meters) from the robot cell.
-        """
-        # Convert the min distance in meters to 'cells'
+        """Sample a free cell that's at least self.min_goal_distance (in meters) from robot."""
         min_cell_dist = int(self.min_goal_distance / self.map_resolution)
 
         height, width = self.map_data.shape
         while True:
             rx = random.randint(0, width - 1)
             ry = random.randint(0, height - 1)
-
             if not self.is_free(rx, ry):
                 continue
-
-            # Check distance in cells from the robot
+            # distance in cells
             cell_dist = math.hypot(rx - self.robot_cell_x, ry - self.robot_cell_y)
             if cell_dist >= min_cell_dist:
                 return rx, ry
 
-    def steer(self, nearest, rand_x, rand_y, step_size=10):
-        dx = rand_x - nearest.x
-        dy = rand_y - nearest.y
+    def steer(self, nearest, rx, ry, step_size=10):
+        dx = rx - nearest.x
+        dy = ry - nearest.y
         dist = math.hypot(dx, dy)
         if dist < step_size:
-            return TreeNode(rand_x, rand_y, parent=nearest)
+            return TreeNode(rx, ry, parent=nearest)
 
         theta = math.atan2(dy, dx)
         new_x = int(nearest.x + step_size * math.cos(theta))
@@ -151,10 +173,10 @@ class RRTExplorer(Node):
         return TreeNode(new_x, new_y, parent=nearest)
 
     def is_free(self, x, y):
+        """Check if cell is in-bounds, unoccupied, respects safety radius."""
         if not self.is_cell_valid(x, y):
             return False
-
-        # Check safety radius
+        # Check safety
         for nx in range(x - self.safety_radius, x + self.safety_radius + 1):
             for ny in range(y - self.safety_radius, y + self.safety_radius + 1):
                 if not self.is_cell_valid(nx, ny):
@@ -168,7 +190,7 @@ class RRTExplorer(Node):
         return (0 <= x < w and 0 <= y < h)
 
     def near_unknown(self, x, y):
-        # Check if a cell is near unknown space (-1)
+        """Check if a cell is near unknown (-1)."""
         for nx in range(x - 2, x + 3):
             for ny in range(y - 2, y + 3):
                 if self.is_cell_valid(nx, ny):
@@ -177,9 +199,7 @@ class RRTExplorer(Node):
         return False
 
     def publish_goal(self, gx, gy):
-        """
-        Convert cell coords -> world coords, then publish as a Pose.
-        """
+        """Convert cell coords -> world coords, publish as a Pose."""
         world_x = self.map_origin_x + gx * self.map_resolution
         world_y = self.map_origin_y + gy * self.map_resolution
 
@@ -190,9 +210,10 @@ class RRTExplorer(Node):
         goal_msg.orientation.w = 1.0
 
         self.goal_pub.publish(goal_msg)
-        self.get_logger().info(f"Published RRT goal: ({world_x:.2f}, {world_y:.2f})")
+        self.get_logger().info(f"Published RRT goal near frontier: ({world_x:.2f}, {world_y:.2f})")
 
     def nearest_node(self, tree, rx, ry):
+        """Return the node from 'tree' closest to (rx, ry)."""
         return min(tree, key=lambda node: (node.x - rx)**2 + (node.y - ry)**2)
 
     def create_marker(self, node: TreeNode):
@@ -205,6 +226,7 @@ class RRTExplorer(Node):
         marker.pose.position.y = self.map_origin_y + node.y * self.map_resolution
         marker.pose.position.z = 0.0
 
+        # 1 cell diameter
         marker.scale.x = self.map_resolution
         marker.scale.y = self.map_resolution
         marker.scale.z = self.map_resolution
@@ -216,6 +238,49 @@ class RRTExplorer(Node):
 
         marker.id = random.randint(0, 1_000_000)
         return marker
+
+    # --------------------------------------------------------------------------
+    #   Clustering Frontier Nodes
+    # --------------------------------------------------------------------------
+    def cluster_nodes(self, nodes, cluster_radius=5):
+        """
+        Group frontier nodes into clusters using BFS or DFS based on a 
+        specified 'cluster_radius' in cell units. 
+        Returns a list of clusters, each cluster is a list of TreeNodes.
+        """
+        clusters = []
+        visited = set()
+
+        # Convert each TreeNode into (x, y) for BFS
+        node_positions = [(n.x, n.y) for n in nodes]
+        pos_to_node = {(n.x, n.y): n for n in nodes}
+
+        for pos in node_positions:
+            if pos in visited:
+                continue
+
+            # Start a new cluster
+            cluster = []
+            queue = deque([pos])
+            visited.add(pos)
+
+            while queue:
+                cx, cy = queue.popleft()
+                cluster.append(pos_to_node[(cx, cy)])
+
+                # Explore neighbors within cluster_radius
+                # (Just do a small square, or 8-direction BFS).
+                for nx in range(cx - cluster_radius, cx + cluster_radius + 1):
+                    for ny in range(cy - cluster_radius, cy + cluster_radius + 1):
+                        if (nx, ny) in pos_to_node and (nx, ny) not in visited:
+                            dist = math.hypot(nx - cx, ny - cy)
+                            if dist <= cluster_radius:
+                                visited.add((nx, ny))
+                                queue.append((nx, ny))
+
+            clusters.append(cluster)
+
+        return clusters
 
 def main(args=None):
     rclpy.init(args=args)
