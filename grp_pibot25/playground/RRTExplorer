@@ -8,9 +8,8 @@ import random
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import Pose
 from visualization_msgs.msg import Marker, MarkerArray
-from std_msgs.msg import Header  # Import Header from std_msgs
+from std_msgs.msg import Header
 
-# TF2 imports
 import tf2_ros
 from tf2_ros import TransformException
 from rclpy.duration import Duration
@@ -31,6 +30,9 @@ class RRTExplorer(Node):
         self.map_origin_y = 0.0
         self.safety_radius = 1  # Cells to consider around a point for safety
 
+        # Minimum distance (in meters) that the chosen goal must be from the robot
+        self.min_goal_distance = 1.0
+
         # TF buffer/listener
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
@@ -40,73 +42,65 @@ class RRTExplorer(Node):
             OccupancyGrid, '/map', self.map_callback, 10
         )
 
-        # Publish PoseStamped (instead of raw Pose), so the navigation stack knows the frame
+        # Publish Pose on /goal
         self.goal_pub = self.create_publisher(Pose, '/goal', 10)
 
-        # Visualization for RRT markers
+        # Visualization markers
         self.marker_pub = self.create_publisher(MarkerArray, '/visualization_markers', 10)
 
-        # Run RRT periodically (e.g., every 3s)
+        # RRT exploration timer
         self.timer_period = 5.0
         self.timer = self.create_timer(self.timer_period, self.explore)
+
+        self.robot_x_map = None
+        self.robot_y_map = None
 
     def map_callback(self, msg):
         self.map_resolution = msg.info.resolution
         self.map_origin_x = msg.info.origin.position.x
         self.map_origin_y = msg.info.origin.position.y
-        # Convert map data to 2D array
+        # Convert map data to a 2D array
         self.map_data = np.array(msg.data).reshape(msg.info.height, msg.info.width)
 
     def explore(self):
-        """
-        Periodic RRT exploration function.
-        We attempt to find the robot's current location in the map frame,
-        then grow an RRT from that position, looking for a frontier.
-        """
         if self.map_data is None:
             self.get_logger().warn("No map data yet.")
             return
 
-        # Try to get the robot's current pose in the 'map' frame
+        # Try to get the robot's current pose in map frame
         try:
-            # Lookup transform from map -> base_link (or base_footprint, etc.)
-            # The robot's translation in the map frame is in transform.transform.translation
             when = rclpy.time.Time()
             transform_stamped = self.tf_buffer.lookup_transform(
-                'map',              # target frame
-                'base_link',        # source frame
+                'map',
+                'base_link',
                 when,
-                # optional timeout for the lookup
                 timeout=Duration(seconds=0.5)
             )
         except (TransformException) as ex:
             self.get_logger().warn(f"Could not get transform from map->base_link: {ex}")
             return
 
-        # Extract robot position in map coordinates (meters)
-        robot_x_map = transform_stamped.transform.translation.x
-        robot_y_map = transform_stamped.transform.translation.y
-        self.get_logger().info(f"Robot is at (map frame): ({robot_x_map:.2f}, {robot_y_map:.2f})")
+        # Extract robot's position in the map frame
+        self.robot_x_map = transform_stamped.transform.translation.x
+        self.robot_y_map = transform_stamped.transform.translation.y
+        self.get_logger().info(f"Robot is at (map frame): ({self.robot_x_map:.2f}, {self.robot_y_map:.2f})")
 
-        # Convert robot world coords -> map cell indices
-        robot_cell_x = int((robot_x_map - self.map_origin_x) / self.map_resolution)
-        robot_cell_y = int((robot_y_map - self.map_origin_y) / self.map_resolution)
+        # Convert that position to map cell indices
+        robot_cell_x = int((self.robot_x_map - self.map_origin_x) / self.map_resolution)
+        robot_cell_y = int((self.robot_y_map - self.map_origin_y) / self.map_resolution)
 
         # If the robot cell is out of bounds or occupied, fallback to map center
         if not self.is_cell_valid(robot_cell_x, robot_cell_y):
-            self.get_logger().warn("Robot's current cell is invalid or occupied. "
-                                   "Falling back to map center as start.")
+            self.get_logger().warn("Robot's current cell is invalid or occupied. Using map center.")
             robot_cell_x = self.map_data.shape[1] // 2
             robot_cell_y = self.map_data.shape[0] // 2
 
-        # Start node in cell coords
         start = TreeNode(robot_cell_x, robot_cell_y)
         tree = [start]
         markers = MarkerArray()
 
-        # Basic RRT expansion
         max_iterations = 100
-        step_size = 10  # Increase step size for further exploration
+        step_size = 10
         for _ in range(max_iterations):
             rand_x, rand_y = self.sample_free(further_away=True)
             nearest = self.nearest_node(tree, rand_x, rand_y)
@@ -116,38 +110,22 @@ class RRTExplorer(Node):
                 new_node.parent = nearest
                 tree.append(new_node)
 
-                # Add a marker for visualization
                 markers.markers.append(self.create_marker(new_node))
 
-                # Check if this new node is near unknown space
+                # If near unknown space, consider publishing goal
                 if self.near_unknown(new_node.x, new_node.y):
-                    # Validate potential goal
                     if self.validate_goal(new_node):
-                        # Convert to world coords and publish
                         self.publish_goal(new_node.x, new_node.y)
                         self.marker_pub.publish(markers)
                         return
 
-        # If no frontier found this round, publish the RRT tree markers anyway
         self.marker_pub.publish(markers)
 
     def sample_free(self, further_away=False):
-        """
-        Randomly sample a cell that's free (unoccupied),
-        respecting the safety radius. If 'further_away' is True, sample
-        farther from the robot's position.
-        """
         height, width = self.map_data.shape
         while True:
-            if further_away:
-                # Sample far away from the robot (based on map size)
-                rand_x = random.randint(0, width - 1)
-                rand_y = random.randint(0, height - 1)
-            else:
-                # Sample normally
-                rand_x = random.randint(0, width - 1)
-                rand_y = random.randint(0, height - 1)
-
+            rand_x = random.randint(0, width - 1)
+            rand_y = random.randint(0, height - 1)
             if self.is_free(rand_x, rand_y):
                 return rand_x, rand_y
 
@@ -164,13 +142,9 @@ class RRTExplorer(Node):
         return TreeNode(new_x, new_y, parent=nearest)
 
     def is_free(self, x, y):
-        """
-        Check if a cell is in-bounds, unoccupied, and respects safety_radius.
-        """
         if not self.is_cell_valid(x, y):
             return False
 
-        # Check additional safety radius
         for nx in range(x - self.safety_radius, x + self.safety_radius + 1):
             for ny in range(y - self.safety_radius, y + self.safety_radius + 1):
                 if not self.is_cell_valid(nx, ny):
@@ -180,17 +154,12 @@ class RRTExplorer(Node):
         return True
 
     def is_cell_valid(self, x, y):
-        """Check if a cell index is in map bounds and not unknown or occupied."""
-        height, width = self.map_data.shape
-        if x < 0 or y < 0 or x >= width or y >= height:
+        h, w = self.map_data.shape
+        if x < 0 or y < 0 or x >= w or y >= h:
             return False
         return True
 
     def near_unknown(self, x, y):
-        """
-        Check if a cell is near unknown space (value == -1).
-        We'll look in a small region around (x, y).
-        """
         for nx in range(x - 2, x + 3):
             for ny in range(y - 2, y + 3):
                 if self.is_cell_valid(nx, ny):
@@ -200,47 +169,45 @@ class RRTExplorer(Node):
 
     def validate_goal(self, goal_node):
         """
-        Placeholder for any extra checks (e.g., do a short path check).
-        Currently always returns True.
+        Reject the goal if it's too close to the robot's current position
+        (less than min_goal_distance).
         """
+        if self.robot_x_map is None or self.robot_y_map is None:
+            return False
+
+        gx = self.map_origin_x + goal_node.x * self.map_resolution
+        gy = self.map_origin_y + goal_node.y * self.map_resolution
+
+        dist = math.hypot(gx - self.robot_x_map, gy - self.robot_y_map)
+        if dist < self.min_goal_distance:
+            self.get_logger().info(
+                f"Rejecting goal at ({gx:.2f},{gy:.2f}) - too close (dist={dist:.2f} < {self.min_goal_distance:.2f})"
+            )
+            return False
         return True
 
     def nearest_node(self, tree, rx, ry):
-        """Return the node from 'tree' that's closest to (rx, ry)."""
         return min(tree, key=lambda node: (node.x - rx)**2 + (node.y - ry)**2)
 
     def publish_goal(self, gx, gy):
         """
-        Convert cell coords -> world coords, then publish as a Pose with a header.
+        Convert cell coords -> world coords, then publish as a Pose.
         """
         world_x = self.map_origin_x + gx * self.map_resolution
         world_y = self.map_origin_y + gy * self.map_resolution
 
-        # Create the Pose message
         goal_msg = Pose()
-
-        # Set the header (manually using Header)
-        header = Header()
-        header.stamp = self.get_clock().now().to_msg()  # Current timestamp
-        header.frame_id = "map"  # Reference frame for the pose
-
-        # Add the header information manually to the Pose message
         goal_msg.position.x = world_x
         goal_msg.position.y = world_y
         goal_msg.position.z = 0.0
-        # Orientation: just set it to identity (facing forward in map frame)
         goal_msg.orientation.w = 1.0
 
-        # Publish the Pose message
         self.goal_pub.publish(goal_msg)
         self.get_logger().info(
-            f"Published RRT goal in /map frame: ({world_x:.2f}, {world_y:.2f})"
+            f"Published RRT goal: ({world_x:.2f}, {world_y:.2f})"
         )
 
     def create_marker(self, node: TreeNode):
-        """
-        Create a small sphere marker at the node's position in world coordinates.
-        """
         marker = Marker()
         marker.header.frame_id = "map"
         marker.type = Marker.SPHERE
@@ -250,7 +217,6 @@ class RRTExplorer(Node):
         marker.pose.position.y = self.map_origin_y + node.y * self.map_resolution
         marker.pose.position.z = 0.0
 
-        # For visibility in RViz, scale the marker to about 1 cell in diameter
         marker.scale.x = self.map_resolution
         marker.scale.y = self.map_resolution
         marker.scale.z = self.map_resolution
@@ -260,10 +226,8 @@ class RRTExplorer(Node):
         marker.color.g = 1.0
         marker.color.b = 0.0
 
-        # Each marker needs a unique ID
         marker.id = random.randint(0, 1_000_000)
         return marker
-
 
 def main(args=None):
     rclpy.init(args=args)
