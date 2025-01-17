@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import Twist
+
+class nav_remap(Node):
+    def __init__(self):
+        super().__init__('cmd_vel_republisher')
+        
+        # Subscriber to the standard cmd_vel topic
+        self.cmd_sub = self.create_subscription(
+            Twist,
+            '/cmd_vel',
+            self.cmd_vel_callback,
+            10
+        )
+        
+        # Publisher to the /multi/cmd_nav topic
+        self.cmd_pub = self.create_publisher(
+            Twist,
+            '/multi/cmd_nav',
+            10
+        )
+
+    def cmd_vel_callback(self, msg: Twist):
+        """
+        Simply re-publish incoming Twist messages to /multi/cmd_nav.
+        """
+        self.cmd_pub.publish(msg)
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = nav_remap()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
