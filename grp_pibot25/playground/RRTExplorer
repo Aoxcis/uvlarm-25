@@ -46,7 +46,7 @@ class RRTExplorer(Node):
         self.marker_pub = self.create_publisher(MarkerArray, '/visualization_markers', 10)
 
         # Run RRT periodically
-        self.timer_period = 20.0
+        self.timer_period = 10.0
         self.timer = self.create_timer(self.timer_period, self.explore)
 
         # We'll store the robot position in map coords (cells)
@@ -74,8 +74,8 @@ class RRTExplorer(Node):
         tree = [start]
         markers = MarkerArray()
 
-        max_iterations = 300
-        step_size = 30
+        max_iterations = 100
+        step_size = 10
 
         for _ in range(max_iterations):
             rx, ry = self.sample_free_away_from_robot()
