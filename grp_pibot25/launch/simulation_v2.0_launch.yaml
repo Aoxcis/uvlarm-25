@@ -20,5 +20,5 @@ launch:
     name: "straight_nav2"
 - node:
     pkg: "grp_pibot25"
-    exec: "RRTExplorer"
-    name: "RRTExplorer"
+    exec: "testExplorer"
+    name: "testExplorer"
