@@ -46,7 +46,7 @@ class RRTExplorer(Node):
         self.marker_pub = self.create_publisher(MarkerArray, '/visualization_markers', 10)
 
         # Run RRT periodically
-        self.timer_period = 20.0
+        self.timer_period = 30.0
         self.timer = self.create_timer(self.timer_period, self.explore)
 
         # We'll store the robot position in map coords (cells)
