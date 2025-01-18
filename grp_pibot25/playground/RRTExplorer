@@ -152,6 +152,10 @@ class RRTExplorer(Node):
 
         self.robot_cell_x = cx
         self.robot_cell_y = cy
+
+        # Store the robot's current orientation
+        self.robot_orientation = transform_stamped.transform.rotation
+
         return True
 
     def sample_free_away_from_robot(self):
@@ -216,10 +220,15 @@ class RRTExplorer(Node):
         goal_msg.position.x = world_x
         goal_msg.position.y = world_y
         goal_msg.position.z = 0.0
-        goal_msg.orientation.w = 1.0
+
+        # Use the robot's current orientation for the goal
+        if hasattr(self, 'robot_orientation'):
+            goal_msg.orientation = self.robot_orientation
+        else:
+            goal_msg.orientation.w = 1.0  # Default orientation if not available
 
         self.goal_pub.publish(goal_msg)
-        self.get_logger().info(f"Published RRT goal near frontier: ({world_x:.2f}, {world_y:.2f})")
+        self.get_logger().info(f"Published goal: ({world_x}, {world_y}) with orientation ({goal_msg.orientation.x}, {goal_msg.orientation.y}, {goal_msg.orientation.z}, {goal_msg.orientation.w})")
 
     def nearest_node(self, tree, rx, ry):
         """Return the node from 'tree' closest to (rx, ry)."""
