@@ -33,10 +33,10 @@ class EnhancedFrontierGoalPublisher(Node):
         self.occupied_value = 100
 
         # Safety radius in cells (to keep a safe distance from obstacles)
-        self.safety_radius = 3
+        self.safety_radius = 1
 
         # Min distance in meters from the robot to the frontier goal
-        self.min_distance_meters = 2.0
+        self.min_distance_meters = 1.0
 
         # TF setup to get actual robot pose in /map frame
         self.tf_buffer = tf2_ros.Buffer()
