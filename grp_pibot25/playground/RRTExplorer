@@ -28,7 +28,7 @@ class RRTExplorer(Node):
         self.map_resolution = 1.0
         self.map_origin_x = 0.0
         self.map_origin_y = 0.0
-        self.safety_radius = 1  # Cells around a point for safety
+        self.safety_radius = 10  # Cells around a point for safety
 
         # The minimum distance (in meters) from the robot to any generated RRT goal
         self.min_goal_distance = 1.0
@@ -46,7 +46,7 @@ class RRTExplorer(Node):
         self.marker_pub = self.create_publisher(MarkerArray, '/visualization_markers', 10)
 
         # Run RRT periodically
-        self.timer_period = 10.0
+        self.timer_period = 20.0
         self.timer = self.create_timer(self.timer_period, self.explore)
 
         # We'll store the robot position in map coords (cells)
@@ -74,8 +74,8 @@ class RRTExplorer(Node):
         tree = [start]
         markers = MarkerArray()
 
-        max_iterations = 100
-        step_size = 10
+        max_iterations = 300
+        step_size = 30
 
         for _ in range(max_iterations):
             rx, ry = self.sample_free_away_from_robot()
