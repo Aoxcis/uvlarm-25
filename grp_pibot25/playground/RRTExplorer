@@ -89,19 +89,21 @@ class RRTExplorer(Node):
                 # Marker for visualization
                 markers.markers.append(self.create_marker(new_node))
 
+        # Clean previous markers before publishing
+        self.clear_markers()
+        self.marker_pub.publish(markers)
+
         # After building the RRT, find frontier nodes (i.e., near unknown)
         frontier_nodes = [node for node in tree if self.near_unknown(node.x, node.y)]
 
         if not frontier_nodes:
             self.get_logger().info("No frontier nodes found this round.")
-            self.marker_pub.publish(markers)
             return
 
         # Cluster frontier nodes, pick the largest cluster, and pick a goal in that cluster
         clusters = self.cluster_nodes(frontier_nodes, cluster_radius=5)  # in cells
         if not clusters:
             self.get_logger().info("No valid clusters of frontier nodes found.")
-            self.marker_pub.publish(markers)
             return
 
         largest_cluster = max(clusters, key=len)
@@ -114,7 +116,14 @@ class RRTExplorer(Node):
         goal_y = int(avg_y)
 
         self.publish_goal(goal_x, goal_y)
-        self.marker_pub.publish(markers)
+
+    def clear_markers(self):
+        """Remove all existing markers by publishing an empty MarkerArray."""
+        clear_array = MarkerArray()
+        marker = Marker()
+        marker.action = Marker.DELETEALL
+        clear_array.markers.append(marker)
+        self.marker_pub.publish(clear_array)
 
     def update_robot_position(self):
         """Update self.robot_cell_x, self.robot_cell_y from TF, returns True if valid."""
