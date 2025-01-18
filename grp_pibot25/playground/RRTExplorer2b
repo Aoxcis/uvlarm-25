@@ -158,7 +158,12 @@ class RRTExplorer(Node):
                    for ny in range(y - 1, y + 2))
 
     def cluster_nodes(self, nodes):
-        positions = [(n.x, n.y) for n in nodes]
+        # Ensure positions are formatted as a 2D array
+        positions = np.array([(n.x, n.y) for n in nodes], dtype=np.float32)
+        
+        if positions.shape[0] == 0:  # Handle the case with no nodes
+            return []
+        
         tree = cKDTree(positions)
         clusters = []
         visited = set()
@@ -167,9 +172,11 @@ class RRTExplorer(Node):
             if i in visited:
                 continue
             neighbors = tree.query_ball_point(pos, self.cluster_radius)
-            clusters.append([nodes[j] for j in neighbors])
+            cluster = [nodes[j] for j in neighbors]
+            clusters.append(cluster)
             visited.update(neighbors)
         return clusters
+
 
     def information_gain(self, node):
         radius_cells = int(3 / self.map_resolution)
