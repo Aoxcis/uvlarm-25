@@ -190,7 +190,7 @@ class RRTExplorer(Node):
             for ny in range(y - self.safety_radius, y + self.safety_radius + 1):
                 if not self.is_cell_valid(nx, ny):
                     return False
-                if self.map_data[ny, nx] != 0:
+                if self.map_data[ny, nx] == 100:
                     return False
         return True
 
