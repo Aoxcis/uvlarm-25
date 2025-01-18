@@ -8,7 +8,6 @@ import random
 
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import Pose
-
 from collections import deque
 
 # TF2 imports
@@ -16,11 +15,11 @@ import tf2_ros
 from tf2_ros import TransformException
 from rclpy.duration import Duration
 
-class EnhancedFrontierGoalPublisher(Node):
+class FarthestFrontierGoalPublisher(Node):
     def __init__(self):
-        super().__init__('enhanced_frontier_goal_publisher')
-        
-        # Frontier detection parameters
+        super().__init__('farthest_frontier_goal_publisher')
+
+        # Basic map info
         self.map_data = None
         self.map_width = 0
         self.map_height = 0
@@ -28,174 +27,176 @@ class EnhancedFrontierGoalPublisher(Node):
         self.map_origin_x = 0.0
         self.map_origin_y = 0.0
 
+        # OccupancyGrid values
         self.unknown_value = -1
         self.free_value = 0
         self.occupied_value = 100
 
-        # Safety radius in cells (to keep a safe distance from obstacles)
+        # Safety radius (in cells) from obstacles
         self.safety_radius = 1
 
-        # Min distance in meters from the robot to the frontier goal
-        self.min_distance_meters = 1.0
-
-        # TF setup to get actual robot pose in /map frame
+        # TF for actual robot pose in /map
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
-        # Subscriptions
+        # Subscribe to /map
         self.map_sub = self.create_subscription(
             OccupancyGrid, '/map', self.map_callback, 10
         )
 
-        # Publisher for goals (Pose messages)
+        # Publish Pose goals on /goal
         self.goal_pub = self.create_publisher(Pose, '/goal', 10)
 
-        # Timer to periodically find frontiers and publish a goal
+        # Timer to periodically attempt to find and publish a frontier goal
         self.timer_period = 10.0  # seconds
         self.create_timer(self.timer_period, self.publish_frontier_goal)
 
-        self.get_logger().info("EnhancedFrontierGoalPublisher node is up.")
+        self.get_logger().info("FarthestFrontierGoalPublisher node initialized.")
 
-    def map_callback(self, msg):
+    def map_callback(self, msg: OccupancyGrid):
+        # Store map info
         self.map_width = msg.info.width
         self.map_height = msg.info.height
         self.map_resolution = msg.info.resolution
         self.map_origin_x = msg.info.origin.position.x
         self.map_origin_y = msg.info.origin.position.y
-        
-        # Convert 1D OccupancyGrid data to 2D array
-        self.map_data = np.array(msg.data, dtype=np.int8).reshape(self.map_height, self.map_width)
+
+        # Convert the 1D array to 2D
+        self.map_data = np.array(msg.data, dtype=np.int8).reshape(
+            self.map_height, self.map_width
+        )
 
     def publish_frontier_goal(self):
         """
-        Periodically detect frontiers, cluster them,
-        pick the largest frontier cluster that is safe & sufficiently far from the robot,
-        and publish a Pose on /goal.
+        1) Get the robot's actual position in /map frame.
+        2) Detect frontier cells, cluster them.
+        3) Among all safe clusters, pick the one with the greatest distance from the robot.
+        4) Publish as a Pose on /goal.
         """
         if self.map_data is None:
-            self.get_logger().warn("No map data yet, cannot compute frontiers.")
+            self.get_logger().warn("No map data yet.")
             return
 
-        # 1) Get the actual robot position in /map frame, convert to cell coords
+        # 1) Get robot cell position
         robot_cell = self.get_robot_cell_position()
         if not robot_cell:
-            self.get_logger().warn("Could not get robot pose from TF; skipping frontier goal.")
+            self.get_logger().warn("Could not get robot pose from TF.")
             return
         rx_cell, ry_cell = robot_cell
 
+        # 2) Detect and cluster frontiers
         frontier_cells = self.detect_frontiers()
         if not frontier_cells:
-            self.get_logger().info("No frontiers found. The map may be fully explored.")
+            self.get_logger().info("No frontiers found. Possibly fully explored.")
             return
 
         clusters = self.cluster_frontiers(frontier_cells)
         if not clusters:
-            self.get_logger().info("No valid frontier clusters found.")
+            self.get_logger().info("Frontier cells found, but no valid clusters formed.")
             return
 
-        # Convert min_distance_meters => min_distance_cells
-        min_distance_cells = int(self.min_distance_meters / self.map_resolution)
-
-        # Among all clusters, pick the single LARGEST cluster that meets distance & safety
-        # We'll store (cluster_size, avg_x, avg_y) for each cluster
-        valid_candidates = []
-        for clust in clusters:
-            if not clust:
+        # 3) Among all clusters that pass safety, pick the cluster that is FARTHEST from the robot
+        farthest_cluster = None
+        farthest_dist = -1.0
+        for cluster in clusters:
+            if not cluster:
                 continue
 
-            # Compute average cell coords
-            avg_x = int(sum(pt[0] for pt in clust) / len(clust))
-            avg_y = int(sum(pt[1] for pt in clust) / len(clust))
+            # Compute average of the cluster as its "center"
+            avg_x = int(sum(pt[0] for pt in cluster) / len(cluster))
+            avg_y = int(sum(pt[1] for pt in cluster) / len(cluster))
 
-            # Check distance from robot
-            dist_cells = math.hypot(avg_x - rx_cell, avg_y - ry_cell)
-            if dist_cells < min_distance_cells:
+            # Check safety around (avg_x, avg_y)
+            if not self.is_safe(avg_x, avg_y):
                 continue
 
-            # Check safety around that average cell
-            if self.is_safe(avg_x, avg_y):
-                valid_candidates.append((len(clust), avg_x, avg_y))
+            # Distance from robot
+            dist = math.hypot(avg_x - rx_cell, avg_y - ry_cell)
+            if dist > farthest_dist:
+                farthest_dist = dist
+                farthest_cluster = (avg_x, avg_y, len(cluster))
 
-        if not valid_candidates:
-            self.get_logger().info("No frontier cluster meets distance & safety criteria.")
+        if not farthest_cluster:
+            self.get_logger().info("No safe frontier cluster found.")
             return
 
-        # Pick the candidate with the largest cluster_size
-        best_cluster = max(valid_candidates, key=lambda c: c[0])
-        cluster_size, gx_cell, gy_cell = best_cluster
+        gx_cell, gy_cell, cluster_size = farthest_cluster
+        # Convert cell -> world coords
+        goal_x = self.map_origin_x + gx_cell * self.map_resolution
+        goal_y = self.map_origin_y + gy_cell * self.map_resolution
 
-        # Convert from cell coords -> world coords
-        world_x = self.map_origin_x + gx_cell * self.map_resolution
-        world_y = self.map_origin_y + gy_cell * self.map_resolution
+        # 4) Publish the Pose
+        pose_msg = Pose()
+        pose_msg.position.x = goal_x
+        pose_msg.position.y = goal_y
+        pose_msg.orientation.w = 1.0
 
-        # Publish the Pose
-        pose = Pose()
-        pose.position.x = world_x
-        pose.position.y = world_y
-        pose.orientation.w = 1.0
-
-        self.goal_pub.publish(pose)
+        self.goal_pub.publish(pose_msg)
         self.get_logger().info(
-            f"Published frontier goal from largest cluster (size={cluster_size}): "
-            f"({world_x:.2f}, {world_y:.2f})"
+            f"Published frontier goal from farthest cluster (size={cluster_size}): "
+            f"({goal_x:.2f}, {goal_y:.2f}), distance={farthest_dist * self.map_resolution:.2f} m"
         )
 
+    # --------------------------------------------------------------------------
+    #   Robot Pose in Map
+    # --------------------------------------------------------------------------
     def get_robot_cell_position(self):
-        """
-        Attempt to get the robot's pose in /map frame, then convert to cell coords.
-        Returns (cx, cy) or None on failure.
-        """
+        """Return (cx, cy) for the robot in cell coords, or None if TF fails."""
         try:
             transform = self.tf_buffer.lookup_transform(
-                'map', 'base_link', rclpy.time.Time(),
+                'map', 'base_link',
+                rclpy.time.Time(),
                 timeout=Duration(seconds=0.5)
             )
         except (TransformException) as ex:
-            self.get_logger().warn(f"TF lookup from map->base_link failed: {ex}")
+            self.get_logger().warn(f"TF lookup map->base_link failed: {ex}")
             return None
 
-        rx_map = transform.transform.translation.x
-        ry_map = transform.transform.translation.y
+        # Robot in map coords (meters)
+        rx = transform.transform.translation.x
+        ry = transform.transform.translation.y
 
-        # Convert map meters -> cell indices
-        cx = int((rx_map - self.map_origin_x) / self.map_resolution)
-        cy = int((ry_map - self.map_origin_y) / self.map_resolution)
+        # Convert to cell
+        cx = int((rx - self.map_origin_x) / self.map_resolution)
+        cy = int((ry - self.map_origin_y) / self.map_resolution)
 
         if not (0 <= cx < self.map_width and 0 <= cy < self.map_height):
             return None
         return (cx, cy)
 
+    # --------------------------------------------------------------------------
+    #   Frontier Detection
+    # --------------------------------------------------------------------------
     def detect_frontiers(self):
         """
-        Frontier cells are those that are UNKNOWN (-1)
-        and have at least one neighbor that is FREE (0).
+        Cells with value = -1 (unknown) that have at least one neighbor with value=0 (free).
         """
         frontiers = []
         for y in range(self.map_height):
             for x in range(self.map_width):
-                if self.map_data[y, x] == self.unknown_value:
-                    # Check if it has a free neighbor
+                if self.map_data[y, x] == -1:
                     if self.has_free_neighbor(x, y):
                         frontiers.append((x, y))
         return frontiers
 
     def has_free_neighbor(self, x, y):
-        """Return True if any 8-neighbor is free (0)."""
+        """Check 8-neighbors for a free cell."""
         for nx in range(x - 1, x + 2):
             for ny in range(y - 1, y + 2):
                 if nx == x and ny == y:
                     continue
                 if 0 <= nx < self.map_width and 0 <= ny < self.map_height:
-                    if self.map_data[ny, nx] == self.free_value:
+                    if self.map_data[ny, nx] == 0:
                         return True
         return False
 
+    # --------------------------------------------------------------------------
+    #   Clustering
+    # --------------------------------------------------------------------------
     def cluster_frontiers(self, frontier_cells, cluster_radius=2):
         """
-        Group frontier cells using BFS/DFS so that
-        nearby frontier cells form a single cluster.
-        cluster_radius=2 means cells within 2 cells in Euclidean distance
-        are considered part of the same cluster.
+        BFS-based clustering: cells within cluster_radius in Euclidean distance 
+        are part of the same cluster.
         """
         clusters = []
         visited = set()
@@ -203,48 +204,44 @@ class EnhancedFrontierGoalPublisher(Node):
         for fc in frontier_cells:
             if fc in visited:
                 continue
-
-            # Start a new cluster
             queue = deque([fc])
             visited.add(fc)
             cluster = []
-
             while queue:
                 cx, cy = queue.popleft()
                 cluster.append((cx, cy))
-
-                # Explore neighbors within cluster_radius
                 for nx in range(cx - cluster_radius, cx + cluster_radius + 1):
                     for ny in range(cy - cluster_radius, cy + cluster_radius + 1):
                         if (nx, ny) in visited:
                             continue
-                        if (nx, ny) in frontier_cells:
-                            dist = math.hypot(nx - cx, ny - cy)
-                            if dist <= cluster_radius:
-                                visited.add((nx, ny))
-                                queue.append((nx, ny))
-
+                        if 0 <= nx < self.map_width and 0 <= ny < self.map_height:
+                            if (nx, ny) in frontier_cells:
+                                dist = math.hypot(nx - cx, ny - cy)
+                                if dist <= cluster_radius:
+                                    visited.add((nx, ny))
+                                    queue.append((nx, ny))
             clusters.append(cluster)
 
         return clusters
 
+    # --------------------------------------------------------------------------
+    #   Safety Check
+    # --------------------------------------------------------------------------
     def is_safe(self, cx, cy):
         """
-        Check if there's enough free space around (cx, cy)
-        according to safety_radius.
+        Check if (cx, cy) has free space around it (safety_radius).
         """
-        # Must be in-bounds
         for nx in range(cx - self.safety_radius, cx + self.safety_radius + 1):
             for ny in range(cy - self.safety_radius, cy + self.safety_radius + 1):
                 if not (0 <= nx < self.map_width and 0 <= ny < self.map_height):
                     return False
-                if self.map_data[ny, nx] != self.free_value:
+                if self.map_data[ny, nx] != 0:  # 0 means free
                     return False
         return True
 
 def main(args=None):
     rclpy.init(args=args)
-    node = EnhancedFrontierGoalPublisher()
+    node = FarthestFrontierGoalPublisher()
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
