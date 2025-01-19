@@ -4,6 +4,7 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from geometry_msgs.msg import Pose
 from nav2_msgs.action import NavigateToPose
+from std_msgs.msg import String
 from kobuki_ros_interfaces.msg import BumperEvent, WheelDropEvent, ButtonEvent, Sound
 import tf2_ros
 
@@ -17,7 +18,7 @@ class Nav2Navigator(Node):
         self.is_bumped = False
 
         # Timeout settings (in seconds)
-        self.navigation_timeout = 30.0
+        self.navigation_timeout = 15.0
         self.timeout_timer = None
 
         # -------------------------
@@ -45,6 +46,11 @@ class Nav2Navigator(Node):
         # (Optional) Sound feedback
         self.sound_pub = self.create_publisher(
             Sound, '/commands/sound', 10
+        )
+
+        self._subToDetection = self.create_subscription(
+            String, '/detection',
+            self.detection_callback, 10
         )
 
         # TF buffer/listener (if you need to validate or transform the goal)
@@ -196,7 +202,7 @@ class Nav2Navigator(Node):
         # self.get_logger().info(f'Current robot position: x={x:.2f}, y={y:.2f}')
 
     # --------------------------------------------------------------------------
-    #   Bumper, WheelDrop, and Button
+    #   Bumper, WheelDrop, Button and Detection
     # --------------------------------------------------------------------------
     def bumper_callback(self, msg: BumperEvent):
         """Handle bumper events."""
@@ -222,6 +228,23 @@ class Nav2Navigator(Node):
         """Handle button events."""
         if msg.state == ButtonEvent.PRESSED:
             self.get_logger().info(f"Button {msg.button} pressed!")
+
+    def detection_callback(self, msg):
+        # Log the detection event
+        x, y, distance, direction = msg.data.split(',')
+        x = float(x)
+        y = float(y)
+        distance = float(distance)
+        self._logger.info(f'Detection event received at {x} {y} at {distance} meters to the {direction}')
+        position = self.current_position.position
+        # angle = np.arctan((x-320)/distance)
+        angle = self.current_angle
+        # Position of object: 
+        marker, text_marker = self.create_marker(position.x+distance*np.cos(angle), position.y+distance*np.sin(angle))
+        if marker and text_marker:  # Only publish if marker is valid
+            self.marker_pub.publish(marker)
+            self.marker_pub.publish(text_marker)
+            self._pubSound.publish(Sound(value=Sound.CLEANINGEND))
 
 def main(args=None):
     rclpy.init(args=args)

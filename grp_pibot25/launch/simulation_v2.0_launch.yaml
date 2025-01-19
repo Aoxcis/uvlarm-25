@@ -13,7 +13,7 @@ launch:
     pkg: "rviz2"
     exec: "rviz2"
     name: "rviz2"
-    args: "-d $(find-pkg-share grp_pibot25)/config/config3.rviz"
+    args: "-d $(find-pkg-share grp_pibot25)/config/config4.rviz"
 - node:
     pkg: "grp_pibot25"
     exec: "straight_nav2"
