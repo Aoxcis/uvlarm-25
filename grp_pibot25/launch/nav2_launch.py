@@ -31,7 +31,8 @@ def generate_launch_description():
     nav2_included = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(nav2_launch_path),
         launch_arguments={
-            'params_file': nav2_params_file
+            'params_file': nav2_params_file,
+            'use_sim_time': 'false'
         }.items()
     )
 

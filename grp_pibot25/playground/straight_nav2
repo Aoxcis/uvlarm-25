@@ -48,10 +48,10 @@ class Nav2Navigator(Node):
             Sound, '/commands/sound', 10
         )
 
-        self._subToDetection = self.create_subscription(
+        """ self._subToDetection = self.create_subscription(
             String, '/detection',
             self.detection_callback, 10
-        )
+        ) """
 
         # TF buffer/listener (if you need to validate or transform the goal)
         self.tf_buffer = tf2_ros.Buffer()
@@ -229,7 +229,7 @@ class Nav2Navigator(Node):
         if msg.state == ButtonEvent.PRESSED:
             self.get_logger().info(f"Button {msg.button} pressed!")
 
-    def detection_callback(self, msg):
+    """ def detection_callback(self, msg):
         # Log the detection event
         x, y, distance, direction = msg.data.split(',')
         x = float(x)
@@ -244,7 +244,7 @@ class Nav2Navigator(Node):
         if marker and text_marker:  # Only publish if marker is valid
             self.marker_pub.publish(marker)
             self.marker_pub.publish(text_marker)
-            self._pubSound.publish(Sound(value=Sound.CLEANINGEND))
+            self._pubSound.publish(Sound(value=Sound.CLEANINGEND)) """
 
 def main(args=None):
     rclpy.init(args=args)
