@@ -1,0 +1,8 @@
+numpy
+opencv-python
+pyrealsense2
+
+# YOLOv5-specific dependencies
+torch>=1.7  # PyTorch
+torchvision>=0.8.1
+matplotlib
