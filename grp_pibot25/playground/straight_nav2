@@ -18,7 +18,7 @@ class Nav2Navigator(Node):
         self.is_bumped = False
 
         # Timeout settings (in seconds)
-        self.navigation_timeout = 15.0
+        self.navigation_timeout = 45.0
         self.timeout_timer = None
 
         # -------------------------
