@@ -1,0 +1,11 @@
+path: /home/e2h1/yolo_larm/dataset.yaml
+train: /home/e2h1/yolo_larm/images/train 
+val: /home/e2h1/yolo_larm/images/test   
+
+# Nombre de classes
+nc: 2
+
+# Noms des classes
+names:
+  0: Ghost
+  1: NukaCola
