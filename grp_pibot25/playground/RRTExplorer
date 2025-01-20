@@ -23,7 +23,6 @@ class TreeNode:
 class RRTExplorer(Node):
     def __init__(self):
         super().__init__('rrt_explorer')
-
         self.map_data = None
         self.map_resolution = 1.0
         self.map_origin_x = 0.0
@@ -75,7 +74,7 @@ class RRTExplorer(Node):
         markers = MarkerArray()
 
         max_iterations = 100
-        step_size = 50
+        step_size = 40
 
         for _ in range(max_iterations):
             rx, ry = self.sample_free_away_from_robot()
