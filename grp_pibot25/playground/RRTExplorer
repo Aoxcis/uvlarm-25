@@ -75,7 +75,7 @@ class RRTExplorer(Node):
         markers = MarkerArray()
 
         max_iterations = 100
-        step_size = 30
+        step_size = 50
 
         for _ in range(max_iterations):
             rx, ry = self.sample_free_away_from_robot()
