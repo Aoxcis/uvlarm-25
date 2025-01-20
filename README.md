@@ -22,15 +22,7 @@ source install/setup.bash
 Ensure you have Python 3 installed. Then, install the following Python packages:
 - Numpy:
   ```bash
-  pip install numpy
-  ```
-- OpenCV:
-  ```bash
-  pip install opencv-python
-  ```
-- pyrealsense2:
-  ```bash
-  pip install pyrealsense2
+  pip install -r requirements.txt
   ```
 - cv_bridge (ROS2 package):
   ```bash
