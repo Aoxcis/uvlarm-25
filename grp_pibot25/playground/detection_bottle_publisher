@@ -10,35 +10,35 @@ from cv_bridge import CvBridge
 
 class Realsense(Node):
     def __init__(self, fps=30):
-        super().__init__('realsense_node')  # Nom du nœud
+        super().__init__('realsense_node')  # Node name
         self.pipeline = rs.pipeline()
         self.config = rs.config()
         self.bridge = CvBridge()
 
-        # Configuration des flux
+        # Stream configuration
         self.config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, fps)
         self.config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, fps)
 
-        # Alignement des images
+        # Image alignment
         self.align_to = rs.stream.depth
         self.align = rs.align(self.align_to)
 
-        # Démarrer le pipeline
+        # Start the pipeline
         try:
             self.pipeline.start(self.config)
-            self.get_logger().info("Pipeline RealSense démarré avec succès.")
+            self.get_logger().info("RealSense pipeline started successfully.")
         except Exception as e:
-            self.get_logger().error(f"Erreur lors du démarrage du pipeline : {e}")
+            self.get_logger().error(f"Error starting the pipeline: {e}")
             exit(1)
 
-        # Publishers ROS
+        # ROS Publishers
         self.color_publisher = self.create_publisher(Image, 'camera/color', 10)
         self.depth_publisher = self.create_publisher(Image, 'camera/depth', 10)
         self.detection_publisher = self.create_publisher(String, 'detection', 10)
 
-        # Paramètres de détection
-        self.lower_green = np.array([50, 100, 50])  # Limite basse pour le vert
-        self.upper_green = np.array([70, 255, 255])  # Limite haute pour le vert
+        # Detection parameters
+        self.lower_green = np.array([50, 100, 50])  # Lower bound for green
+        self.upper_green = np.array([70, 255, 255])  # Upper bound for green
         self.kernel = np.ones((5, 5), np.uint8)
 
     def read_and_process_frames(self):
@@ -48,36 +48,36 @@ class Realsense(Node):
         color_frame = aligned_frames.get_color_frame()
 
         if not depth_frame or not color_frame:
-            self.get_logger().warn("Impossible de récupérer les frames.")
+            self.get_logger().warn("Unable to retrieve frames.")
             return None, None, None
 
-        # Obtenir les images couleur et profondeur
+        # Get color and depth images
         color_image = np.asanyarray(color_frame.get_data())
         depth_image = np.asanyarray(depth_frame.get_data())
 
         return color_image, depth_image, depth_frame
 
     def detect_green_objects(self, color_image, depth_frame):
-        # Convertir en espace HSV
+        # Convert to HSV space
         hsv_image = cv2.cvtColor(color_image, cv2.COLOR_BGR2HSV)
 
-        # Masque pour le vert
+        # Mask for green
         mask = cv2.inRange(hsv_image, self.lower_green, self.upper_green)
 
-        # Nettoyage du masque
+        # Clean up the mask
         mask = cv2.erode(mask, self.kernel, iterations=1)
         mask = cv2.dilate(mask, self.kernel, iterations=1)
 
-        # Trouver les contours
+        # Find contours
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         detected_objects = []
 
         for contour in contours:
-            if cv2.contourArea(contour) < 140:  # Ignorer les petits objets
+            if cv2.contourArea(contour) < 140:  # Ignore small objects
                 continue
 
-            # Obtenir les coordonnées du contour
+            # Get the contour coordinates
             x, y, w, h = cv2.boundingRect(contour)
             center_x = x + w // 2
             center_y = y + h // 2
@@ -97,25 +97,25 @@ class Realsense(Node):
         detected_objects = self.detect_green_objects(color_image, depth_frame)
 
         for x, y, w, h, distance in detected_objects:
-            direction = "gauche" if x < 300 else "droite" if x > 600 else "centre"
+            direction = "left" if x < 300 else "right" if x > 600 else "center"
             cv2.rectangle(color_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
             cv2.putText(color_image, f"Distance: {distance:.2f}m", (x, y - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
             self.detection_publisher.publish(String(data=f"{x}, {y},{distance:.2f}, {direction}"))
 
-        # Publier l'image couleur
+        # Publish the color image
         msg_color = self.bridge.cv2_to_imgmsg(color_image, "bgr8")
         msg_color.header.stamp = self.get_clock().now().to_msg()
         msg_color.header.frame_id = "camera_color_frame"
         self.color_publisher.publish(msg_color)
 
-        # Publier l'image de profondeur
+        # Publish the depth image
         msg_depth = self.bridge.cv2_to_imgmsg(depth_image, "mono16")
         msg_depth.header.stamp = self.get_clock().now().to_msg()
         msg_depth.header.frame_id = "camera_depth_frame"
         self.depth_publisher.publish(msg_depth)
 
-        # Afficher les résultats
+        # Display the results
         cv2.imshow("Green Object Detection", color_image)
         cv2.waitKey(1)
 

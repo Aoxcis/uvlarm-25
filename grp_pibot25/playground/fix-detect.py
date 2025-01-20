@@ -167,7 +167,7 @@ def main(args=None):
 
 
 
-        
+
     finally:
         rs_node.pipeline.stop()
         rs_node.destroy_node()
