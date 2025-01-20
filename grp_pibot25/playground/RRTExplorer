@@ -32,6 +32,9 @@ class RRTExplorer(Node):
         # The minimum distance (in meters) from the robot to any generated RRT goal
         self.min_goal_distance = 1.0
 
+        # Counter to track consecutive rounds without frontier nodes
+        self.no_frontier_count = 0
+
         # TF buffer/listener
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
@@ -96,8 +99,19 @@ class RRTExplorer(Node):
         frontier_nodes = [node for node in tree if self.near_unknown(node.x, node.y)]
 
         if not frontier_nodes:
-            self.get_logger().info("No frontier nodes found this round.")
+            self.no_frontier_count += 1
+            self.get_logger().info(f"No frontier nodes found. Count: {self.no_frontier_count}")
+            
+            # Publish a random valid node after 3 consecutive failures
+            if self.no_frontier_count >= 3:
+                self.get_logger().info("Publishing a random valid goal due to repeated failures.")
+                rx, ry = self.sample_random_valid_node()
+                self.publish_goal(rx, ry)
+                self.no_frontier_count = 0  # Reset the counter
             return
+
+        # Reset the counter if frontier nodes are found
+        self.no_frontier_count = 0
 
         # Cluster frontier nodes, pick the largest cluster, and pick a goal in that cluster
         clusters = self.cluster_nodes(frontier_nodes, cluster_radius=5)  # in cells
@@ -115,6 +129,15 @@ class RRTExplorer(Node):
         goal_y = int(avg_y)
 
         self.publish_goal(goal_x, goal_y)
+
+    def sample_random_valid_node(self):
+        """Sample a random valid node within the map."""
+        height, width = self.map_data.shape
+        while True:
+            rx = random.randint(0, width - 1)
+            ry = random.randint(0, height - 1)
+            if self.is_free(rx, ry):
+                return rx, ry
 
     def clear_markers(self):
         """Remove all existing markers by publishing an empty MarkerArray."""
