@@ -7,7 +7,7 @@ launch:
     file: "/opt/ros/iron/share/slam_toolbox/launch/online_sync_launch.py"
 
 - include:
-    file: "o2p5/grp_pibot25/launch/nav2_launch.py"
+    file: "o2p5/grp_pibot25/launch/nav2_sim_launch.py"
 
 - node:
     pkg: "rviz2"
