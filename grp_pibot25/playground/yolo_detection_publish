@@ -12,14 +12,14 @@ import os
 
 
 class YoloRealsense(Node):
-    def __init__(self, fps=60):
+    def __init__(self, fps=30):
         super().__init__('yolo_realsense_node')
 
         # YOLO Model setup
         self.model = torch.hub.load('ultralytics/yolov5', 'custom', path='o2p5/grp_pibot25/playground/weights/best.pt')
         # self.model = torch.hub.load('ultralytics/yolov5', 'custom', path='/home/e2h1/Documents/ros_space/o2p5/grp_pibot25/playground/weights/best.pt')
 
-        self.model.conf = 0.6  # Confidence threshold
+        self.model.conf = 0.7  # Confidence threshold
         self.model.iou = 0.8  # IoU threshold
         self.model.multi_scale = True  # Enable multi-scale detection
         # RealSense pipeline setup
@@ -70,13 +70,14 @@ class YoloRealsense(Node):
         # Perform YOLO inference
         results = self.model(color_image)
         detections = results.xyxy[0].tolist()  # Get detection results as a list
-
+        detections = [d for d in detections if (d[2] - d[0]) * (d[3] - d[1]) <= 60000]
         for *box, conf, cls in detections:
             x1, y1, x2, y2 = map(int, box)
             label = f"{self.model.names[int(cls)]} {conf:.2f}"
             center_x = (x1 + x2) // 2
             center_y = (y1 + y2) // 2
             direction = "left" if center_x < 300 else "right" if center_x > 600 else "center"
+            
 
             distance = depth_frame.get_distance(center_x, center_y)
 
