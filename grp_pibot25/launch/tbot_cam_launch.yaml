@@ -1,0 +1,15 @@
+launch:
+
+- include:
+    file: "/opt/ros/iron/share/slam_toolbox/launch/online_sync_launch.py"
+
+- node:
+    pkg: "rviz2"
+    exec: "rviz2"
+    name: "rviz2"
+    args: "-d $(find-pkg-share grp_pibot25)/config/config_final.rviz"
+
+- node:
+    pkg: "grp_pibot25"
+    exec: "yolo_detection_publish"
+    name: "yolo_detection_publish"
