@@ -64,7 +64,7 @@ class Nav2Navigator(Node):
             Sound, '/commands/sound', 10
         )
 
-        self.marker_pub = self.create_publisher(
+        self.object_marker_pub = self.create_publisher(
             Marker, '/visualization_object_markers', 10
         )
         
@@ -287,9 +287,9 @@ class Nav2Navigator(Node):
         marker.scale.y = self.map_resolution
         marker.scale.z = self.map_resolution
         marker.color.a = 1.0
-        marker.color.r = 0.0
-        marker.color.g = 1.0
-        marker.color.b = 1.0
+        marker.color.r = 1.0
+        marker.color.g = 0.0
+        marker.color.b = 0.0
         
         # Créer un marker de texte pour afficher des informations
         text_marker = Marker()
@@ -300,7 +300,7 @@ class Nav2Navigator(Node):
         text_marker.action = Marker.ADD
         text_marker.pose.position.x = x
         text_marker.pose.position.y = y
-        text_marker.pose.position.z = 1.0  # Légèrement au-dessus de la sphère
+        text_marker.pose.position.z = 0.50  # Légèrement au-dessus de la sphère
         text_marker.scale.z = 0.3  # Taille du texte
         text_marker.color.a = 1.0
         text_marker.color.r = 1.0
@@ -336,8 +336,8 @@ class Nav2Navigator(Node):
         # Position of object: 
         marker, text_marker = self.create_object_marker(position.x+distance*np.cos(angle), position.y+distance*np.sin(angle))
         if marker and text_marker:  # Only publish if marker is valid
-            self.marker_pub.publish(marker)
-            self.marker_pub.publish(text_marker)
+            self.object_marker_pub.publish(marker)
+            self.object_marker_pub.publish(text_marker)
             self.sound_pub.publish(Sound(value=Sound.CLEANINGEND))
 
 def main(args=None):
