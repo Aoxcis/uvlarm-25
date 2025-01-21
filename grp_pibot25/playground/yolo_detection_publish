@@ -8,17 +8,20 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import String
 from cv_bridge import CvBridge
 import torch
+import os
 
 
 class YoloRealsense(Node):
-    def __init__(self, fps=30):
+    def __init__(self, fps=60):
         super().__init__('yolo_realsense_node')
 
         # YOLO Model setup
-        self.model = torch.hub.load('ultralytics/yolov5', 'custom', path='weights/best.pt')
-        self.model.conf = 0.25  # Confidence threshold
-        self.model.iou = 0.001  # IoU threshold
+        self.model = torch.hub.load('ultralytics/yolov5', 'custom', path='o2p5/grp_pibot25/playground/weights/best.pt')
+        # self.model = torch.hub.load('ultralytics/yolov5', 'custom', path='/home/e2h1/Documents/ros_space/o2p5/grp_pibot25/playground/weights/best.pt')
 
+        self.model.conf = 0.6  # Confidence threshold
+        self.model.iou = 0.8  # IoU threshold
+        self.model.multi_scale = True  # Enable multi-scale detection
         # RealSense pipeline setup
         self.pipeline = rs.pipeline()
         self.config = rs.config()
@@ -73,6 +76,8 @@ class YoloRealsense(Node):
             label = f"{self.model.names[int(cls)]} {conf:.2f}"
             center_x = (x1 + x2) // 2
             center_y = (y1 + y2) // 2
+            direction = "left" if center_x < 300 else "right" if center_x > 600 else "center"
+
             distance = depth_frame.get_distance(center_x, center_y)
 
             # Annotate the frame
@@ -81,8 +86,8 @@ class YoloRealsense(Node):
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
             # Publish detection info
-            detection_msg = String(data=f"{label} at ({x1},{y1},{x2},{y2}) distance: {distance:.2f}m")
-            self.detection_publisher.publish(detection_msg)
+            # detection_msg = String(data=f"{label} at ({x1},{y1},{x2},{y2}) distance: {distance:.2f}m")
+            self.detection_publisher.publish(String(data=f"{center_x}, {center_y},{distance:.2f}, {direction}"))
 
         # Publish color and depth images
         msg_color = self.bridge.cv2_to_imgmsg(color_image, "bgr8")
