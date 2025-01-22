@@ -264,7 +264,7 @@ class Nav2Navigator(Node):
     
     def create_object_marker(self, x, y):
         # Check if this zone has already been detected (within tolerance)
-        tolerance = 1.5  # Define tolerance range (in meters)
+        tolerance = 1  # Define tolerance range (in meters)
         for detected_x, detected_y in self.detected_zones:
             distance = math.sqrt((x - detected_x) ** 2 + (y - detected_y) ** 2)
             if distance < tolerance:  # Si la distance est inférieure à la tolérance
