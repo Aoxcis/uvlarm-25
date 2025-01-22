@@ -264,14 +264,15 @@ class Nav2Navigator(Node):
     
     def create_object_marker(self, x, y):
         # Check if this zone has already been detected (within tolerance)
-        tolerance = 1  # Define tolerance range (in meters)
+        robot_position = self.current_position.position
+        tolerance = 0.5  # Define tolerance range (in meters)
         for detected_x, detected_y in self.detected_zones:
-            distance = math.sqrt((x - detected_x) ** 2 + (y - detected_y) ** 2)
+            distance = math.sqrt((robot_position.x+x - detected_x) ** 2 + (robot_position.y+y - detected_y) ** 2)
             if distance < tolerance:  # Si la distance est inférieure à la tolérance
                 return None, None  # Ne pas créer un nouveau marqueur
         
         # Mark this zone as detected
-        self.detected_zones.add((x, y))
+        self.detected_zones.add((robot_position.x+x, robot_position.y+y))
 
         # Créer un ID unique pour chaque marker
         marker = Marker()
@@ -330,11 +331,11 @@ class Nav2Navigator(Node):
         y = float(y)
         distance = float(distance)
         self._logger.info(f'Detection event received at {x} {y} at {distance} meters to the {direction}')
-        position = self.current_position.position
+        
         # angle = np.arctan((x-320)/distance)
         angle = self.current_angle
         if distance<2:
-            marker, text_marker = self.create_object_marker(distance*np.sin(angle), distance*np.cos(angle))
+            marker, text_marker = self.create_object_marker(distance*0.9, 0.0)
             if marker and text_marker:  # Only publish if marker is valid
                 self.object_marker_pub.publish(marker)
                 self.object_marker_pub.publish(text_marker)
