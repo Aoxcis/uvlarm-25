@@ -1,5 +1,11 @@
+launch:
+
+- include:
+    file: "/opt/ros/iron/share/slam_toolbox/launch/online_sync_launch.py"
+
+
 - node:
     pkg: "rviz2"
     exec: "rviz2"
     name: "rviz2"
-    args: "-d $(find-pkg-share grp_pibot25)/config/config4.rviz"
+    args: "-d $(find-pkg-share grp_pibot25)/config/config_final.rviz"
