@@ -48,3 +48,4 @@ install( PROGRAMS playground/straight_auto_Astar DESTINATION lib/${PROJECT_NAME}
 install( PROGRAMS playground/straight_sim_Astar DESTINATION lib/${PROJECT_NAME} )
 install( PROGRAMS playground/straight_nav2 DESTINATION lib/${PROJECT_NAME} )
 install( PROGRAMS playground/nav_remap DESTINATION lib/${PROJECT_NAME} )
+install( PROGRAMS playground/yolo_detection_publish DESTINATION lib/${PROJECT_NAME} )

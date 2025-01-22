@@ -24,8 +24,8 @@ launch:
 
 - node:
     pkg: "grp_pibot25"
-    exec: "detection_bottle_publisher"
-    name: "detection_bottle_publisher"
+    exec: "yolo_detection_publish"
+    name: "yolo_detection_publish"
 
 - node:
     pkg: "grp_pibot25"

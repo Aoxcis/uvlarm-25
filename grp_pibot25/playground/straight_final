@@ -34,7 +34,7 @@ class Nav2Navigator(Node):
         self.detected_zones = set() 
 
         # Timeout settings (in seconds)
-        self.navigation_timeout = 30.0
+        self.navigation_timeout = 15.0
         self.timeout_timer = None
 
         # -------------------------
