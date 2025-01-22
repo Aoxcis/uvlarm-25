@@ -76,7 +76,7 @@ class YoloRealsense(Node):
             label = f"{self.model.names[int(cls)]} {conf:.2f}"
             center_x = (x1 + x2) // 2
             center_y = (y1 + y2) // 2
-            direction = "left" if center_x < 300 else "right" if center_x > 600 else "center"
+            direction = "left" if center_x < 200 else "right" if center_x > 400 else "center"
             
 
             distance = depth_frame.get_distance(center_x, center_y)
