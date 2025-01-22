@@ -333,12 +333,12 @@ class Nav2Navigator(Node):
         position = self.current_position.position
         # angle = np.arctan((x-320)/distance)
         angle = self.current_angle
-        # Position of object: 
-        marker, text_marker = self.create_object_marker(position.x+distance*np.sin(angle), position.y+distance*np.cos(angle))
-        if marker and text_marker:  # Only publish if marker is valid
-            self.object_marker_pub.publish(marker)
-            self.object_marker_pub.publish(text_marker)
-            self.sound_pub.publish(Sound(value=Sound.CLEANINGEND))
+        if distance<2:
+            marker, text_marker = self.create_object_marker(position.x+distance*np.sin(angle), position.y+distance*np.cos(angle))
+            if marker and text_marker:  # Only publish if marker is valid
+                self.object_marker_pub.publish(marker)
+                self.object_marker_pub.publish(text_marker)
+                self.sound_pub.publish(Sound(value=Sound.CLEANINGEND))
 
 def main(args=None):
     rclpy.init(args=args)
