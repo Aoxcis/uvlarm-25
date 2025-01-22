@@ -280,8 +280,8 @@ class Nav2Navigator(Node):
         self.marker_id += 1  # Incrémenter l'ID pour le prochain marker
         marker.type = Marker.SPHERE
         marker.action = Marker.ADD
-        marker.pose.position.x = x
-        marker.pose.position.y = y
+        marker.pose.position.x = self.map_origin_x + x * self.map_resolution
+        marker.pose.position.y = self.map_origin_y + y * self.map_resolution
         marker.pose.position.z = 0.0
         marker.scale.x = self.map_resolution
         marker.scale.y = self.map_resolution
