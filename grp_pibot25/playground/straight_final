@@ -333,11 +333,15 @@ class Nav2Navigator(Node):
         self._logger.info(f'Detection event received at {x} {y} at {distance} meters to the {direction}')
         
         # angle = np.arctan((x-320)/distance)
-        angle = self.current_angle
-        x_world = (x - 320) * distance / 600
-
+        angle = 0.0
+        if direction == 'left':
+            angle += np.pi/2
+        elif direction == 'right':
+            angle -= np.pi/2
+        else:
+            angle = 0.0
         if distance<2:
-            marker, text_marker = self.create_object_marker(distance*0.9, x_world)
+            marker, text_marker = self.create_object_marker(distance*0.9, angle )
             if marker and text_marker:  # Only publish if marker is valid
                 self.object_marker_pub.publish(marker)
                 self.object_marker_pub.publish(text_marker)
