@@ -275,13 +275,13 @@ class Nav2Navigator(Node):
 
         # Créer un ID unique pour chaque marker
         marker = Marker()
-        marker.header.frame_id = "laserlink"
+        marker.header.frame_id = "laser_link"
         marker.id = self.marker_id  # ID unique pour chaque marker
         self.marker_id += 1  # Incrémenter l'ID pour le prochain marker
         marker.type = Marker.SPHERE
         marker.action = Marker.ADD
-        marker.pose.position.x = self.map_origin_x + x * self.map_resolution
-        marker.pose.position.y = self.map_origin_y + y * self.map_resolution
+        marker.pose.position.x = x
+        marker.pose.position.y = y
         marker.pose.position.z = 0.0
         marker.scale.x = self.map_resolution
         marker.scale.y = self.map_resolution
@@ -293,7 +293,7 @@ class Nav2Navigator(Node):
         
         # Créer un marker de texte pour afficher des informations
         text_marker = Marker()
-        text_marker.header.frame_id = "laserlink"
+        text_marker.header.frame_id = "laser_link"
         text_marker.id = self.object_counter  # ID unique pour chaque texte aussi
         self.object_counter += 1
         text_marker.type = Marker.TEXT_VIEW_FACING
