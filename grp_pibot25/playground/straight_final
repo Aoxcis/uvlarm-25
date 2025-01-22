@@ -275,7 +275,7 @@ class Nav2Navigator(Node):
 
         # Créer un ID unique pour chaque marker
         marker = Marker()
-        marker.header.frame_id = "map"
+        marker.header.frame_id = "laserlink"
         marker.id = self.marker_id  # ID unique pour chaque marker
         self.marker_id += 1  # Incrémenter l'ID pour le prochain marker
         marker.type = Marker.SPHERE
@@ -293,7 +293,7 @@ class Nav2Navigator(Node):
         
         # Créer un marker de texte pour afficher des informations
         text_marker = Marker()
-        text_marker.header.frame_id = "map"
+        text_marker.header.frame_id = "laserlink"
         text_marker.id = self.object_counter  # ID unique pour chaque texte aussi
         self.object_counter += 1
         text_marker.type = Marker.TEXT_VIEW_FACING
@@ -334,7 +334,7 @@ class Nav2Navigator(Node):
         # angle = np.arctan((x-320)/distance)
         angle = self.current_angle
         if distance<2:
-            marker, text_marker = self.create_object_marker(position.x+distance*np.sin(angle), position.y+distance*np.cos(angle))
+            marker, text_marker = self.create_object_marker(distance*np.sin(angle), distance*np.cos(angle))
             if marker and text_marker:  # Only publish if marker is valid
                 self.object_marker_pub.publish(marker)
                 self.object_marker_pub.publish(text_marker)
