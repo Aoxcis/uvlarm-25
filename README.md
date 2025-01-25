@@ -1,105 +1,156 @@
 
-# Requirements & Installation
+# Introduction
 
-This project integrates ROS2, Python, OpenCV, and Intel RealSense. To run it on another machine, the following dependencies are required:
+This project's purpose is to make a Kobuki robot capable of autonomously exploring a map with intelligent (non-random) movement and using an Intel RealSense camera to detect objects on the map and mark their locations.
 
-## 1. ROS2 Installation (Iron)
-Follow the official ROS installation instructions to install ROS2 Iron:
-- [ROS2 Installation Guide (Iron)](https://docs.ros.org/en/iron/Installation.html)
+## Challenges
 
-After installing ROS2 Iron, create your ROS workspace and clone this repository into it.
+### First Challenge
 
+Demonstrate the robot's ability to navigate a cluttered environment and provide a live view of its surroundings.
+
+### Second Challenge
+
+Demonstrate the robot's ability to navigate a cluttered environment while locating specific objects. This involves building a map of the environment.
+
+# Installation
+<!-- 
+## Automatic Installation
+
+To automatically install all the necessary dependencies and clone the required repositories, run the provided `install.sh` script:
 ```bash
-mkdir -p ~/ros_space
-cd ~/ros_space
-git clone https://github.com/Aoxcis/uvlarm-25.git
-cd ~/ros_space
-colcon build
-source install/setup.bash
+chmod +x install.sh
+./install.sh
 ```
 
-## 2. Python Dependencies
-Ensure you have Python 3 installed. Then, install the following Python packages:
-- Numpy:
-  ```bash
-  pip install -r requirements.txt
-  ```
-- cv_bridge (ROS2 package):
-  ```bash
-  sudo apt install ros-iron-cv-bridge
-  ```
+## Manual Installation -->
+## Prerequisites
 
-## 3. ROS2 Python Dependencies
-Install the necessary ROS2 dependencies:
-- `rclpy` : ROS2 Python client library for writing ROS nodes.
-- `sensor_msgs` : For image data types (`Image`) used in ROS topics.
-- `std_msgs` : For standard message types like `String` for publishing detection messages.
-- `cv_bridge` : ROS2 package for converting between OpenCV images and ROS image messages.
+This project requires:
 
-Install these dependencies with:
+- **ROS2 Iron**
+- **Python 3.10**
+- **Gazebo**
+- **Nav2**
+- **OpenCV**
+- **YOLOv5**
+- **Intel RealSense**
+
+Ensure your system meets these requirements before proceeding.
+
+## Setting Up the Workspace
+
+1. Create your ROS workspace and clone the required repositories:
+   ```bash
+   mkdir -p ros_space
+   cd ros_space
+   git clone https://github.com/Aoxcis/uvlarm-25.git
+   git clone https://github.com/imt-mobisyst/pkg-interfaces.git
+   git clone https://github.com/imt-mobisyst/pkg-tsim
+   colcon build
+   source install/setup.bash
+   ```
+
+## Installing Dependencies
+
+### Python 3.10
+
+Install Python 3.10:
+
+```bash
+sudo apt install python3.10
+```
+
+### ROS2 Iron
+
+Install ROS2 Iron:
+
+```bash
+sudo apt install software-properties-common
+sudo add-apt-repository universe
+sudo apt update && sudo apt install curl -y
+sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+sudo apt update && sudo apt install ros-dev-tools
+sudo apt update && sudo apt upgrade
+sudo apt install ros-iron-desktop
+```
+
+### Python Packages
+
+Install the required Python packages:
+
+```bash
+pip install -r o2p5/grp_pibot25/requirements.txt
+```
+
+### Simulation Packages
+
+Install the necessary packages for the simulation:
+
+```bash
+sudo apt install gazebo gazebo-common gazebo-plugin-base libgazebo-dev libgazebo11:amd64
+sudo apt install ros-iron-gazebo-dev ros-iron-gazebo-msgs ros-iron-gazebo-plugins ros-iron-gazebo-ros ros-iron-gazebo-ros-pkgs ros-iron-turtlebot3-gazebo
+```
+
+### Navigation Packages
+
+Install the navigation packages:
+
+```bash
+sudo apt install ros-iron-navigation2 ros-iron-nav2-bringup
+```
+
+### ROS2 Python Packages
+
+Install the ROS2 Python packages:
 
 ```bash
 sudo apt install ros-iron-rclpy ros-iron-sensor-msgs ros-iron-std-msgs ros-iron-cv-bridge
 ```
 
-## 4. Robot-Specific Message Drivers
-Install drivers to interpret robot-specific messages (bumper, laser, etc.):
+### Camera Package
+
+Install the package for camera support:
 
 ```bash
-cd $ROS_WORKSPACE
-git clone https://github.com/imt-mobisyst/pkg-interfaces.git
-colcon build --base-path pkg-interfaces
-source ./install/setup.bash
+sudo apt install libsdl2-2.0-0
 ```
 
-## 5. Clone Necessary Repositories
-Clone the required repositories into your workspace and build them:
+# Launching the Code
 
-```bash
-cd $ROS_WORKSPACE
-git clone https://github.com/imt-mobisyst/pkg-tsim
-colcon build
-source ./install/setup.bash
-```
+### First Challenge
 
-## 6. Gazebo Installation
-If you plan to use Gazebo for simulation, you need to install the following Gazebo-related packages:
+To launch the code for the first challenge, navigate to the `ros_space` directory and run:
 
-- **Gazebo**:
-  ```bash
-  sudo apt install gazebo=11.10.2+dfsg-1
-  sudo apt install gazebo-common=11.10.2+dfsg-1
-  sudo apt install gazebo-plugin-base=11.10.2+dfsg-1
-  sudo apt install libgazebo-dev=11.10.2+dfsg-1
-  sudo apt install libgazebo11:amd64=11.10.2+dfsg-1
-  ```
-
-- **ROS2 Gazebo Packages**:
-  ```bash
-  sudo apt install ros-iron-gazebo-dev=3.7.0-3jammy.20230622.191804
-  sudo apt install ros-iron-gazebo-msgs=3.7.0-3jammy.20231117.090251
-  sudo apt install ros-iron-gazebo-plugins=3.7.0-3jammy.20231117.111548
-  sudo apt install ros-iron-gazebo-ros=3.7.0-3jammy.20231117.104944
-  sudo apt install ros-iron-gazebo-ros-pkgs=3.7.0-3jammy.20231117.114324
-  sudo apt install ros-iron-turtlebot3-gazebo
-  ```
-
-These packages are necessary for integrating Gazebo with ROS2, and for using Gazebo for robot simulation in the project.
-
-## 7. Compilation and Execution
-- From the root of the workspace, build the project:
+For simulation:
 
 ```bash
 colcon build
-source install/setup.bash
-```
-
-- Launch a yaml file, for example:
-
-```bash
+source ./install/setup.bash
 ros2 launch grp_pibot25 simulation_v1_launch.yaml
 ```
 
----
+With a real robot:
 
-By following these steps, you should be able to successfully set up and run the project on your machine.
+```bash
+ros2 launch grp_pibot25 tbot_v1_launch.yaml
+```
+
+### Second Challenge
+
+To launch the code for the second challenge, navigate to the `ros_space` directory and run:
+
+For simulation:
+
+```bash
+colcon build
+source ./install/setup.bash
+ros2 launch grp_pibot25 simulation_v2.0_launch.yaml
+```
+
+With a real robot:
+
+```bash
+ros2 launch grp_pibot25 tbot_v2_launch.yaml
+```

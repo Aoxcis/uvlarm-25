@@ -10,7 +10,7 @@ launch:
     pkg: "rviz2"
     exec: "rviz2"
     name: "rviz2"
-    args: "-d $(find-pkg-share grp_pibot25)/config/config.rviz"
+    args: "-d $(find-pkg-share grp_pibot25)/config/config2.rviz"
 - node:
     pkg: "grp_pibot25"
     exec: "straight_sim"
