@@ -46,9 +46,7 @@ Ensure your system meets these requirements before proceeding.
    cd ros_space
    git clone https://github.com/Aoxcis/uvlarm-25.git
    git clone https://github.com/imt-mobisyst/pkg-interfaces.git
-   git clone https://github.com/imt-mobisyst/pkg-tsim
-   colcon build
-   source install/setup.bash
+   git clone https://github.com/imt-mobisyst/pkg-tsim.git
    ```
 
 ## Installing Dependencies
@@ -74,6 +72,8 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-a
 sudo apt update && sudo apt install ros-dev-tools
 sudo apt update && sudo apt upgrade
 sudo apt install ros-iron-desktop
+colcon build
+source install/setup.bash
 ```
 
 ### Python Packages

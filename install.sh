@@ -9,9 +9,7 @@ git clone https://github.com/Aoxcis/uvlarm-25.git
 git clone https://github.com/imt-mobisyst/pkg-interfaces.git
 git clone https://github.com/imt-mobisyst/pkg-tsim
 
-# Build the workspace
-colcon build
-source install/setup.bash
+
 
 # Install Python 3.10 and ROS2-Iron
 sudo apt install python3.10
@@ -24,6 +22,10 @@ sudo apt update && sudo apt install ros-dev-tools
 sudo apt update
 sudo apt upgrade
 sudo apt install ros-iron-desktop
+
+# Build the workspace
+colcon build
+source install/setup.bash
 
 # Install required Python packages
 pip install -r o2p5/grp_pibot25/requirements.txt
