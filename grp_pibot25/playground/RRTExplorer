@@ -122,7 +122,7 @@ class RRTExplorer(Node):
         largest_cluster = max(clusters, key=len)
         self.get_logger().info(f"Found {len(clusters)} frontier clusters. Largest size: {len(largest_cluster)}")
 
-        # For simplicity, we'll pick the average position of the largest cluster as the goal
+        # For simplicity, we pick the average position of the largest cluster as the goal
         avg_x = sum(n.x for n in largest_cluster) / len(largest_cluster)
         avg_y = sum(n.y for n in largest_cluster) / len(largest_cluster)
         goal_x = int(avg_x)
@@ -131,7 +131,7 @@ class RRTExplorer(Node):
         self.publish_goal(goal_x, goal_y)
 
     def sample_random_valid_node(self):
-        """Sample a random valid node within the map."""
+        # Sample a random valid node within the map
         height, width = self.map_data.shape
         while True:
             rx = random.randint(0, width - 1)
@@ -148,7 +148,7 @@ class RRTExplorer(Node):
         self.marker_pub.publish(clear_array)
 
     def update_robot_position(self):
-        """Update self.robot_cell_x, self.robot_cell_y from TF, returns True if valid."""
+        # Update self.robot_cell_x, self.robot_cell_y from TF, returns True if valid.
         try:
             when = rclpy.time.Time()
             transform_stamped = self.tf_buffer.lookup_transform(
@@ -181,7 +181,7 @@ class RRTExplorer(Node):
         return True
 
     def sample_free_away_from_robot(self):
-        """Sample a free cell that's at least self.min_goal_distance (in meters) from robot."""
+        # Sample a free cell that's at least self.min_goal_distance (in meters) from robot.
         min_cell_dist = int(self.min_goal_distance / self.map_resolution)
 
         height, width = self.map_data.shape
@@ -208,7 +208,7 @@ class RRTExplorer(Node):
         return TreeNode(new_x, new_y, parent=nearest)
 
     def is_free(self, x, y):
-        """Check if cell is in-bounds, unoccupied, respects safety radius."""
+        # Check if cell is in-bounds, unoccupied, respects safety radius.
         if not self.is_cell_valid(x, y):
             return False
         # Check safety
@@ -225,7 +225,7 @@ class RRTExplorer(Node):
         return (0 <= x < w and 0 <= y < h)
 
     def near_unknown(self, x, y):
-        """Check if a cell is near unknown (-1)."""
+        # Check if a cell is near unknown (-1).
         for nx in range(x - 2, x + 3):
             for ny in range(y - 2, y + 3):
                 if self.is_cell_valid(nx, ny):
@@ -234,7 +234,7 @@ class RRTExplorer(Node):
         return False
 
     def publish_goal(self, gx, gy):
-        """Convert cell coords -> world coords, publish as a Pose."""
+        # Convert cell coords -> world coords, publish as a Pose.
         world_x = self.map_origin_x + gx * self.map_resolution
         world_y = self.map_origin_y + gy * self.map_resolution
 
@@ -253,7 +253,7 @@ class RRTExplorer(Node):
         self.get_logger().info(f"Published goal: ({world_x}, {world_y}) with orientation ({goal_msg.orientation.x}, {goal_msg.orientation.y}, {goal_msg.orientation.z}, {goal_msg.orientation.w})")
 
     def nearest_node(self, tree, rx, ry):
-        """Return the node from 'tree' closest to (rx, ry)."""
+        # Return the node from 'tree' closest to (rx, ry).
         return min(tree, key=lambda node: (node.x - rx)**2 + (node.y - ry)**2)
 
     def create_marker(self, node: TreeNode):
@@ -266,7 +266,6 @@ class RRTExplorer(Node):
         marker.pose.position.y = self.map_origin_y + node.y * self.map_resolution
         marker.pose.position.z = 0.0
 
-        # 1 cell diameter
         marker.scale.x = self.map_resolution
         marker.scale.y = self.map_resolution
         marker.scale.z = self.map_resolution
@@ -287,6 +286,7 @@ class RRTExplorer(Node):
         Group frontier nodes into clusters using BFS or DFS based on a 
         specified 'cluster_radius' in cell units. 
         Returns a list of clusters, each cluster is a list of TreeNodes.
+
         """
         clusters = []
         visited = set()
@@ -309,7 +309,6 @@ class RRTExplorer(Node):
                 cluster.append(pos_to_node[(cx, cy)])
 
                 # Explore neighbors within cluster_radius
-                # (Just do a small square, or 8-direction BFS).
                 for nx in range(cx - cluster_radius, cx + cluster_radius + 1):
                     for ny in range(cy - cluster_radius, cy + cluster_radius + 1):
                         if (nx, ny) in pos_to_node and (nx, ny) not in visited:

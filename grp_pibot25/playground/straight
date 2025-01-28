@@ -178,6 +178,7 @@ class StraightCtrl:
         text_marker.text = str(text_marker.id+1)  # ID de l'objet
         
         return marker, text_marker
+    
     def quaternion_to_yaw(self, quat):
         x, y, z, w = quat.x, quat.y, quat.z, quat.w
         # Calculer le yaw (angle autour de l'axe Z)
@@ -248,14 +249,14 @@ class StraightCtrl:
             if dist <= 0.0 or dist == float('inf'):
                 continue
 
-            # Check if the obstacle is within 0.1 meters (10 cm) and on the left or right
+            # Check if the obstacle is within 0.5 meters and on the left, right or front
             if -math.pi/3 <= angle <= -math.pi/8:  # Left side
                 if 0.1 < dist < 0.5:
                     self.obstacle_right = True
             elif math.pi/8 <= angle <= math.pi/3:  # Right side
                 if 0.1 < dist < 0.5:
                     self.obstacle_left = True
-            if -math.pi/8 <= angle <= math.pi/8:  # Front side
+            if -math.pi/8 <= angle <= math.pi/8:  # Front
                 if 0.1 < dist < 0.5:
                     self.obstacle_front = True
 
@@ -351,6 +352,7 @@ class StraightCtrl:
 
         # Publish the velocity command
         self._pubVelocity.publish(twist)
+    
     def accelerate(self, current_value, target_value):
         # Smoothly accelerate or decelerate
         if current_value < target_value:
