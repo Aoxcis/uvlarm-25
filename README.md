@@ -2,6 +2,7 @@
 # Introduction
 
 This project's purpose is to make a Kobuki robot capable of autonomously exploring a map with intelligent (non-random) movement and using an Intel RealSense camera to detect objects on the map and mark their locations.
+Video presentation: https://drive.google.com/file/d/1jdSDWwWQXPewI4sk96ihXOMziDcvPdg5/view?usp=sharing
 
 ## Challenges
 
