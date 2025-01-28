@@ -81,7 +81,7 @@ source install/setup.bash
 Install the required Python packages:
 
 ```bash
-pip install -r o2p5/grp_pibot25/requirements.txt
+pip install -r uvlarm-25/grp_pibot25/requirements.txt
 ```
 
 ### Simulation Packages

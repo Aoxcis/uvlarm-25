@@ -28,7 +28,7 @@ colcon build
 source install/setup.bash
 
 # Install required Python packages
-pip install -r o2p5/grp_pibot25/requirements.txt
+pip install -r uvlarm-25/grp_pibot25/requirements.txt
 
 # Install Gazebo and related packages
 sudo apt install -y gazebo \
